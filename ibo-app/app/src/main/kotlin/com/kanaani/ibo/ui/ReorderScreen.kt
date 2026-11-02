@@ -41,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +78,9 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
     val first = remember { FocusRequester() }
     LaunchedEffect(order != null) { if (order != null) InitialFocusOnce(first) }
     BackHandler(enabled = selected.isNotEmpty() && renaming == null) { selected = emptySet() }
+    // Dernière catégorie focalisée : les actions s'y appliquent quand rien n'est sélectionné.
+    var focusedId by remember { mutableStateOf<String?>(null) }
+    fun targets(): Set<String> = selected.ifEmpty { setOfNotNull(focusedId) }
 
     fun nameOf(id: String) = Store.categoryNames[s.kind]?.get(id) ?: originals[id] ?: id
 
@@ -108,72 +112,94 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
         commit(if (top) group + rest else rest + group, group.firstOrNull())
     }
 
+    // Touches de couleur de la télécommande : rouge = monter, bleu = descendre, vert = renommer.
+    androidx.compose.runtime.DisposableEffect(renaming) {
+        if (renaming == null) com.kanaani.ibo.KeyHook.handler = handler@{ e ->
+            val code = e.keyCode
+            if (code != android.view.KeyEvent.KEYCODE_PROG_RED && code != android.view.KeyEvent.KEYCODE_PROG_BLUE &&
+                code != android.view.KeyEvent.KEYCODE_PROG_GREEN) return@handler false
+            if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
+                val t = targets()
+                when (code) {
+                    android.view.KeyEvent.KEYCODE_PROG_RED -> if (t.isNotEmpty()) shift(t, -1)
+                    android.view.KeyEvent.KEYCODE_PROG_BLUE -> if (t.isNotEmpty()) shift(t, +1)
+                    else -> if (t.size == 1) renaming = t.first()
+                }
+            }
+            true
+        }
+        onDispose { com.kanaani.ibo.KeyHook.handler = null }
+    }
+
     val title = when (s.kind) { "live" -> Str.orderLive; "movie" -> Str.orderMovies; else -> Str.orderSeries }
     Backdrop {
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Header(title)
-            // Barre d'actions : apparaît dès qu'une catégorie est sélectionnée.
-            if (selected.isEmpty()) {
-                Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Label(Str.reorderHint, 12.sp, C.text2, lines = 2, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(12.dp))
-                    BarButton(Str.orderReset) {
-                        Store.setCategoryOrder(s.kind, emptyList())
-                        order = server?.map { it.id }
-                    }
-                }
-            } else {
-                LazyRow(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    item { Label(Str.selected(selected.size), 14.sp, Color(0xFF8FB3FF), FontWeight.Bold, modifier = Modifier.padding(end = 6.dp)) }
-                    item { BarButton("▲ " + Str.moveUp) { shift(selected, -1) } }
-                    item { BarButton("▼ " + Str.moveDown) { shift(selected, +1) } }
-                    item { BarButton("⤒ " + Str.toTop) { toEdge(selected, top = true) } }
-                    item { BarButton("⤓ " + Str.toBottom) { toEdge(selected, top = false) } }
-                    if (selected.size == 1) item { BarButton("✎ " + Str.rename) { renaming = selected.first() } }
-                    item { BarButton("✕ " + Str.clearSelection) { selected = emptySet() } }
-                }
-            }
-            val list = order
-            when {
-                list == null -> Loading()
-                list.isEmpty() -> Message(Str.empty)
-                else -> LazyColumn(
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(8.dp),
-                ) {
-                    itemsIndexed(list, key = { _, id -> id }) { i, id ->
-                        val isSel = id in selected
-                        val renamed = Store.categoryNames[s.kind]?.containsKey(id) == true
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Tile(
-                                { selected = if (isSel) selected - id else selected + id },
-                                (if (i == 0) Modifier.focusRequester(first) else Modifier).weight(1f).height(44.dp),
-                                RoundedCornerShape(10.dp),
-                                colors = if (isSel) listOf(C.cardHi) else listOf(C.card),
-                                focusColors = C.live,
-                                focusScale = 1.02f,
-                            ) {
-                                Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    // Case de sélection
-                                    Box(
-                                        Modifier.size(22.dp).clip(RoundedCornerShape(6.dp))
-                                            .background(if (isSel) C.accent else Color.Transparent)
-                                            .border(2.dp, if (isSel) C.accent else C.text3, RoundedCornerShape(6.dp)),
-                                        contentAlignment = Alignment.Center,
-                                    ) { if (isSel) Label("✓", 13.sp, Color.White, FontWeight.Bold) }
-                                    Spacer(Modifier.width(10.dp))
-                                    Label("${i + 1}", 13.sp, C.text3, modifier = Modifier.width(34.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Label(nameOf(id), 14.sp, weight = if (isSel) FontWeight.Bold else FontWeight.Medium)
-                                        if (renamed) Label("${Str.originalName}: ${originals[id] ?: ""}", 10.sp, C.text3)
+            Label(Str.reorderHint, 12.sp, C.text2, lines = 2)
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val list = order
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    when {
+                        list == null -> Loading()
+                        list.isEmpty() -> Message(Str.empty)
+                        else -> LazyColumn(
+                            state = listState,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(8.dp),
+                        ) {
+                            itemsIndexed(list, key = { _, id -> id }) { i, id ->
+                                val isSel = id in selected
+                                val renamed = Store.categoryNames[s.kind]?.containsKey(id) == true
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Tile(
+                                        { selected = if (isSel) selected - id else selected + id },
+                                        (if (i == 0) Modifier.focusRequester(first) else Modifier).weight(1f).height(44.dp)
+                                            .onFocusChanged { if (it.isFocused) focusedId = id },
+                                        RoundedCornerShape(10.dp),
+                                        colors = if (isSel) listOf(C.cardHi) else listOf(C.card),
+                                        focusColors = C.live,
+                                        focusScale = 1.02f,
+                                    ) {
+                                        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            // Case de sélection
+                                            Box(
+                                                Modifier.size(22.dp).clip(RoundedCornerShape(6.dp))
+                                                    .background(if (isSel) C.accent else Color.Transparent)
+                                                    .border(2.dp, if (isSel) C.accent else C.text3, RoundedCornerShape(6.dp)),
+                                                contentAlignment = Alignment.Center,
+                                            ) { if (isSel) Label("✓", 13.sp, Color.White, FontWeight.Bold) }
+                                            Spacer(Modifier.width(10.dp))
+                                            Label("${i + 1}", 13.sp, C.text3, modifier = Modifier.width(34.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Label(nameOf(id), 14.sp, weight = if (isSel) FontWeight.Bold else FontWeight.Medium)
+                                                if (renamed) Label("${Str.originalName}: ${originals[id] ?: ""}", 10.sp, C.text3)
+                                            }
+                                        }
                                     }
+                                    ArrowButton("▲", enabled = i > 0) { shift(setOf(id), -1) }
+                                    ArrowButton("▼", enabled = i < list.lastIndex) { shift(setOf(id), +1) }
                                 }
                             }
-                            ArrowButton("▲", enabled = i > 0) { shift(setOf(id), -1) }
-                            ArrowButton("▼", enabled = i < list.lastIndex) { shift(setOf(id), +1) }
                         }
+                    }
+                }
+                // Panneau d'actions à côté de la liste : une seule pression ▶ depuis n'importe quelle catégorie.
+                Column(
+                    Modifier.width(200.dp).fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Label(if (selected.isEmpty()) Str.focusedCategory else Str.selected(selected.size), 12.sp, Color(0xFF8FB3FF), FontWeight.Bold)
+                    SideButton("▲ " + Str.moveUp, Color(0xFFE53935)) { targets().takeIf { it.isNotEmpty() }?.let { shift(it, -1) } }
+                    SideButton("▼ " + Str.moveDown, Color(0xFF1E88E5)) { targets().takeIf { it.isNotEmpty() }?.let { shift(it, +1) } }
+                    SideButton("⤒ " + Str.toTop, null) { targets().takeIf { it.isNotEmpty() }?.let { toEdge(it, top = true) } }
+                    SideButton("⤓ " + Str.toBottom, null) { targets().takeIf { it.isNotEmpty() }?.let { toEdge(it, top = false) } }
+                    SideButton("✎ " + Str.rename, Color(0xFF43A047)) { targets().takeIf { it.size == 1 }?.let { renaming = it.first() } }
+                    if (selected.isNotEmpty()) SideButton("✕ " + Str.clearSelection, null) { selected = emptySet() }
+                    Spacer(Modifier.weight(1f))
+                    SideButton(Str.orderReset, null) {
+                        Store.setCategoryOrder(s.kind, emptyList())
+                        order = server?.map { it.id }
                     }
                 }
             }
@@ -186,6 +212,17 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
                 onRestore = { Store.renameCategory(s.kind, id, ""); renaming = null },
                 onDismiss = { renaming = null },
             )
+        }
+    }
+}
+
+/** Bouton du panneau ; [dot] : pastille de la touche de couleur correspondante sur la télécommande. */
+@Composable
+private fun SideButton(label: String, dot: Color?, onClick: () -> Unit) {
+    Tile(onClick, Modifier.fillMaxWidth().height(36.dp), RoundedCornerShape(10.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.03f) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Label(label, 13.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (dot != null) Box(Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(dot))
         }
     }
 }

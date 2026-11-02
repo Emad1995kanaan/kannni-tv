@@ -92,10 +92,11 @@ object Str {
     val orderReset get() = t("Restore original order", "إرجاع الترتيب الأصلي", "שחזור הסדר המקורי")
     val moving get() = t("Moving", "عم تتحرك", "בהזזה")
     val reorderHint get() = t(
-        "Press OK on categories to select them (✓), then use the buttons above to move or rename. Arrows next to a category move it alone.",
-        "اضغط OK على الفئات لتحديدها (✓)، بعدين استعمل الأزرار فوق للتحريك أو إعادة التسمية. الأسهم جنب الفئة بتحرّكها لحالها.",
-        "לחצו OK על קטגוריות כדי לבחור אותן (✓), ואז השתמשו בכפתורים למעלה להזזה או לשינוי שם. החצים ליד קטגוריה מזיזים רק אותה.")
+        "OK selects categories (✓). Remote colour keys: 🔴 up · 🔵 down · 🟢 rename — or press ▶ to reach the buttons. Without a selection, they act on the category under the cursor.",
+        "OK بيحدد الفئات (✓). أزرار الريموت الملوّنة: 🔴 لفوق · 🔵 لتحت · 🟢 إعادة تسمية، أو اضغط ▶ للأزرار اللي على الجنب. بدون تحديد بتشتغل على الفئة اللي واقف عليها.",
+        "OK בוחר קטגוריות (✓). כפתורי הצבע בשלט: 🔴 למעלה · 🔵 למטה · 🟢 שינוי שם, או ▶ לכפתורים בצד. בלי בחירה הם פועלים על הקטגוריה המסומנת.")
     fun selected(n: Int) = t("$n selected", "محدد $n", "נבחרו $n")
+    val focusedCategory get() = t("Category under cursor", "الفئة اللي واقف عليها", "הקטגוריה שמסומנת")
     val moveUp get() = t("Up", "لفوق", "למעלה")
     val moveDown get() = t("Down", "لتحت", "למטה")
     val toTop get() = t("To top", "لأول القائمة", "לראש הרשימה")
