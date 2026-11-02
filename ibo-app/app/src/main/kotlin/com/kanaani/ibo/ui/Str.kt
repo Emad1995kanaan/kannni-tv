@@ -29,6 +29,9 @@ object Str {
     val expires get() = t("Expires", "ينتهي في", "תוקף עד")
     val daysLeft get() = t("days left", "يوم متبقٍ", "ימים נותרו")
     val unlimited get() = t("Unlimited", "غير محدود", "ללא הגבלה")
+    val dollar get() = t("Dollar", "دولار", "דולר")
+    val dinar get() = t("Dinar", "دينار", "דינר")
+    val euro get() = t("Euro", "يورو", "יורו")
 
     // Connexion
     val signIn get() = t("Sign in", "تسجيل الدخول", "התחברות")
