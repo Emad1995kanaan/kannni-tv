@@ -30,7 +30,8 @@ android {
 
     defaultConfig {
         applicationId = appId
-        minSdk = 24
+        // Android 6+ : beaucoup de box TV bon marché tournent encore en Android 6 / 7.
+        minSdk = 23
         targetSdk = 35
         versionCode = versionCode0
         versionName = versionName0
@@ -47,6 +48,10 @@ android {
                 storePassword = System.getenv("BRAND_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("BRAND_KEY_ALIAS")
                 keyPassword = System.getenv("BRAND_KEY_PASSWORD")
+                // v1 en plus de v2/v3 : certains installeurs de box TV n'acceptent que la signature « jar ».
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
