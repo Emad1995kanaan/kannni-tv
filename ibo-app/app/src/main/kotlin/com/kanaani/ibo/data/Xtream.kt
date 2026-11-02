@@ -38,9 +38,11 @@ data class Category(val id: String, val name: String)
 
 data class Channel(val id: String, val name: String, val logo: String?, val number: Int, val categoryId: String?)
 
-data class Movie(val id: String, val name: String, val poster: String?, val rating: String?, val ext: String, val categoryId: String?)
+/** [added] : date d'ajout sur le serveur (s), pour « Derniers ajouts ». */
+data class Movie(val id: String, val name: String, val poster: String?, val rating: String?, val ext: String, val categoryId: String?, val added: Long = 0)
 
-data class Show(val id: String, val name: String, val poster: String?, val rating: String?, val categoryId: String?)
+/** [updated] : dernière modification (nouvel épisode) sur le serveur (s), pour « Dernières mises à jour ». */
+data class Show(val id: String, val name: String, val poster: String?, val rating: String?, val categoryId: String?, val updated: Long = 0)
 
 data class MovieInfo(
     val plot: String?, val genre: String?, val year: String?, val duration: String?,
@@ -138,7 +140,8 @@ class Xtream(val host: String, val username: String, val password: String) {
     suspend fun movies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
         get(url("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
-            Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"))
+            Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"),
+                added = o.str("added")?.toLongOrNull() ?: 0)
         }
     } ?: emptyList()
 
@@ -146,9 +149,16 @@ class Xtream(val host: String, val username: String, val password: String) {
     suspend fun shows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
         get(url("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("series_id") ?: return@mapNotNull null
-            Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"))
+            Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"),
+                updated = o.str("last_modified")?.toLongOrNull() ?: 0)
         }
     } ?: emptyList()
+
+    /** Films les plus récemment ajoutés au serveur (toutes catégories). */
+    suspend fun latestMovies(limit: Int = 300): List<Movie> = movies(null).filter { it.added > 0 }.sortedByDescending { it.added }.take(limit)
+
+    /** Séries les plus récemment mises à jour (nouveaux épisodes), toutes catégories. */
+    suspend fun latestShows(limit: Int = 300): List<Show> = shows(null).filter { it.updated > 0 }.sortedByDescending { it.updated }.take(limit)
 
     suspend fun movieInfo(id: String): MovieInfo? = cached("vodinfo:$id") {
         val root = get(url("get_vod_info", "&vod_id=${enc(id)}")) as? JsonObject ?: return@cached null

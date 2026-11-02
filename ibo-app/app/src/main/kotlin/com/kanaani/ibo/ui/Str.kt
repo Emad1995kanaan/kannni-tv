@@ -48,6 +48,8 @@ object Str {
 
     // Listes
     val all get() = t("All", "الكل", "הכול")
+    val latestMovies get() = t("Latest additions", "آخر الإضافات", "נוספו לאחרונה")
+    val latestSeries get() = t("Latest series updates", "آخر تحديثات المسلسلات", "סדרות שעודכנו לאחרונה")
     val categories get() = t("Categories", "الفئات", "קטגוריות")
     val search get() = t("Search…", "بحث…", "חיפוש…")
     val searchButton get() = t("Search", "بحث", "חיפוש")

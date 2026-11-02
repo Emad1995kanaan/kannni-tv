@@ -58,8 +58,10 @@ sealed class Screen {
     companion object {
         /** Catégorie spéciale du Direct : les favoris. */
         const val FAVORITES = "__fav__"
-        /** Catégorie spéciale du Direct : toutes les chaînes. */
+        /** Catégorie spéciale : tout. */
         const val ALL = "__all__"
+        /** Films / séries : derniers ajouts ou dernières mises à jour. */
+        const val LATEST = "__latest__"
     }
 }
 
