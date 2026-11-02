@@ -3,6 +3,8 @@ package com.kanaani.ibo.ui
 import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -141,11 +143,10 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                 }
                 // 3) Aperçu
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
-                        if (s.playing != null && Playback.current != null) {
-                            PlayerSurface(controls = false, resync = true)
-                            if (Playback.error) Label(Str.playError, 13.sp, C.error, lines = 2, modifier = Modifier.padding(16.dp))
-                        } else Label(Str.chooseChannel, 14.sp, C.text2)
+                    // Cadre de l'aperçu : la vidéo est posée dessus par LiveVideoHost (même surface qu'en plein écran).
+                    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).background(Color.Black)
+                        .onGloballyPositioned { LiveVideo.previewBounds = it.boundsInRoot() }, contentAlignment = Alignment.Center) {
+                        if (s.playing == null || Playback.current == null) Label(Str.chooseChannel, 14.sp, C.text2)
                     }
                     val p = s.playing
                     if (p != null) {
@@ -188,7 +189,7 @@ private fun ChannelRow(c: Channel, index: Int, playing: Boolean, modifier: Modif
 
 /** Surface vidéo du lecteur partagé. [controls] : barre de contrôle Media3 (plein écran VOD). */
 @Composable
-fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier, resync: Boolean = false, onView: (PlayerView) -> Unit = {}) {
+fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier, onView: (PlayerView) -> Unit = {}) {
     AndroidView(
         factory = { c ->
             PlayerView(c).apply {
@@ -201,8 +202,6 @@ fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier, resync: Bool
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 }
                 player = Playback.player(c)
-                // Direct : l'image peut rester figée en changeant de surface (aperçu ↔ plein écran).
-                if (resync) postDelayed({ Playback.resync() }, 250)
                 // Plein écran VOD : la barre de contrôle reçoit la télécommande tout de suite.
                 if (controls) post { requestFocus(); showController() }
                 onView(this)

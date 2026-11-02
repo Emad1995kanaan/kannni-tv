@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import com.kanaani.ibo.data.Store
 import com.kanaani.ibo.player.Playback
 
@@ -41,10 +42,13 @@ private fun Screens(onExit: () -> Unit) {
         is Screen.Catalog -> CatalogScreen(nav, session, top)
         is Screen.MovieDetail -> MovieDetailScreen(nav, session, top)
         is Screen.ShowDetail -> ShowDetailScreen(nav, session, top)
-        is Screen.Play -> PlayerScreen(nav, session, top)
+        // Direct plein écran : dessiné par LiveVideoHost (même surface vidéo que l'aperçu).
+        is Screen.Play -> if (top.live) androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
+            else PlayerScreen(nav, session, top)
         Screen.Favorites -> FavoritesScreen(nav, session)
         is Screen.Reorder -> ReorderScreen(session, top)
         Screen.Account -> AccountScreen(session)
         Screen.Settings -> SettingsScreen(nav, session)
     }
+    LiveVideoHost(nav, session, top)
 }

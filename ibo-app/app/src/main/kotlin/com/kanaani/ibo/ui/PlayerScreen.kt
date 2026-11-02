@@ -54,7 +54,7 @@ import com.kanaani.ibo.player.Playback
 import kotlinx.coroutines.delay
 
 @Composable
-fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
+fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play, hosted: Boolean = false) {
     val ctx = LocalContext.current
     var index by remember { mutableIntStateOf(s.index) }
     val channel = if (s.live) s.channels.getOrNull(index) else null
@@ -159,7 +159,8 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            // Direct : la vidéo est dessinée dessous par LiveVideoHost (surface unique) ; ici seulement les commandes.
+            .background(if (hosted) Color.Transparent else Color.Black)
             // Pincement à deux doigts : écarter = zoom (plein écran), rapprocher = image entière.
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -193,15 +194,16 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
             ),
     ) {
         var playerView by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
-        LaunchedEffect(playerView, Store.aspect) {
-            playerView?.resizeMode = when (Store.aspect) {
+        val videoView = if (hosted) LiveVideo.view else playerView
+        LaunchedEffect(videoView, Store.aspect) {
+            videoView?.resizeMode = when (Store.aspect) {
                 1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
                 2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
             }
         }
         var controlsVisible by remember { mutableStateOf(true) }
-        PlayerSurface(controls = !s.live, resync = s.live, onView = { v ->
+        if (!hosted) PlayerSurface(controls = !s.live, onView = { v ->
             playerView = v
             v.setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { vis -> controlsVisible = vis == android.view.View.VISIBLE })
         })
