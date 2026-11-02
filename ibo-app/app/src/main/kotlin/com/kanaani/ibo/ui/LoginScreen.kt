@@ -109,7 +109,7 @@ fun LoginScreen() {
                         }
                     }
                 }
-                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = true, imeAction = ImeAction.Done, numeric = numeric, onDone = submit)
+                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = true, masked = false, imeAction = ImeAction.Done, numeric = numeric, onDone = submit)
                 error?.let { Label(it, 13.sp, C.error, FontWeight.SemiBold, lines = 3) }
                 Tile(submit, Modifier.fillMaxWidth().height(48.dp), RoundedCornerShape(12.dp), colors = C.live, focusScale = 1.03f) { f ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

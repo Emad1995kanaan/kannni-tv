@@ -192,6 +192,8 @@ fun Field(
     placeholder: String,
     modifier: Modifier = Modifier,
     password: Boolean = false,
+    /** Masquer le texte (●●●) ; false = mot de passe visible (clavier « mot de passe » quand même, sans suggestions). */
+    masked: Boolean = password,
     focusRequester: FocusRequester? = null,
     imeAction: ImeAction = ImeAction.Next,
     numeric: Boolean = false,
@@ -207,7 +209,7 @@ fun Field(
         interactionSource = interaction,
         textStyle = TextStyle(color = C.text, fontFamily = Manrope, fontSize = 16.sp),
         cursorBrush = SolidColor(C.accent),
-        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+        visualTransformation = if (masked) PasswordVisualTransformation() else VisualTransformation.None,
         // Télécommande : le clavier ne s'ouvre PAS en passant sur le champ (il bloquerait la navigation), seulement sur OK.
         keyboardOptions = KeyboardOptions(
             keyboardType = when {
