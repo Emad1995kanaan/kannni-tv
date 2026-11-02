@@ -58,6 +58,8 @@ val brandAppId = resolveBuildConfigValue("BRAND_APP_ID", "com.ultratv.tv.nativea
 val brandHost = resolveBuildConfigValue("BRAND_HOST", "").trimEnd('/')
 val brandProviderName = resolveBuildConfigValue("BRAND_PROVIDER_NAME", brandAppName)
 val brandUpdateRepo = resolveBuildConfigValue("BRAND_UPDATE_REPO", "")
+// « classic » (accueil Ultra TV) ou « ibo » (grandes tuiles Direct / Films / Séries).
+val brandHomeStyle = resolveBuildConfigValue("BRAND_HOME_STYLE", "classic")
 val isBranded = brandAppId != "com.ultratv.tv.nativeapp"
 
 // Édition : « standard » (app publique) ou « pro » (variante revendeur : -PULTRA_EDITION=pro).
@@ -84,9 +86,12 @@ android {
         buildConfigField("String", "EDITION", "\"$ultraEdition\"")
         // Marque (brand.properties)
         resValue("string", "app_name", brandAppName)
+        // Autorité du fournisseur de suggestions (doit suivre l'applicationId, voir AndroidManifest).
+        resValue("string", "search_authority", "$brandAppId.search")
         buildConfigField("String", "BRAND_HOST", javaString(brandHost))
         buildConfigField("String", "BRAND_PROVIDER_NAME", javaString(brandProviderName))
         buildConfigField("String", "BRAND_UPDATE_REPO", javaString(brandUpdateRepo))
+        buildConfigField("String", "BRAND_HOME_STYLE", javaString(brandHomeStyle))
     }
 
     // Release signing — reads ULTRA_KEYSTORE / ULTRA_KEYSTORE_PASSWORD /

@@ -49,18 +49,33 @@ jobs:
           BRAND_KEY_PASSWORD: ${{ secrets.BRAND_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --console=plain --stacktrace
-          mkdir -p ../out
+          mkdir -p ../out/classic ../out/ibo
           VERSION=$(cat ../VERSION)
-          for f in app/build/outputs/apk/release/*.apk; do
-            abi=$(basename "$f" .apk | sed -E 's/^app-//; s/-release.*//')
-            cp "$f" "../out/Kanaani-$VERSION-$abi.apk"
-          done
-          ls -la ../out
+          collect() {
+            for f in app/build/outputs/apk/release/*.apk; do
+              abi=$(basename "$f" .apk | sed -E 's/^app-//; s/-release.*//')
+              cp "$f" "../out/$2/$1-$VERSION-$abi.apk"
+            done
+          }
+          # 1) كنعاني العادي (الإعدادات من brand.properties)
+          ./gradlew assembleRelease --console=plain --stacktrace
+          collect Kanaani classic
+          # 2) كنعاني بشكل IBO: تطبيق منفصل بمعرّف خاص، بينزل جنب الأول
+          rm -rf app/build/outputs/apk/release
+          ./gradlew assembleRelease --console=plain --stacktrace -PBRAND_HOME_STYLE=ibo -PBRAND_APP_ID=com.kanaani.tv.ibo
+          collect Kanaani-IBO ibo
+          ls -laR ../out
 
-      - name: Upload APKs
+      - name: Upload Kanaani APKs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: kanaani-apk
-          path: out/*.apk
+          path: out/classic/*.apk
+          retention-days: 30
+
+      - name: Upload Kanaani IBO APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kanaani-ibo-apk
+          path: out/ibo/*.apk
           retention-days: 30

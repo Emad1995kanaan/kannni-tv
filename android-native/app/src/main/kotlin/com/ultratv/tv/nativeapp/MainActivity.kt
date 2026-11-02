@@ -506,14 +506,16 @@ private fun UltraTvAppRoot(sidebarPosition: SidebarPosition) {
                 // Le lecteur est plein écran : ni rail ni marge (sinon le rail volerait le focus et recouvrirait la vidéo).
                 val backEntry by nav.currentBackStackEntryAsState()
                 val fullscreen = backEntry?.destination?.route?.startsWith("player") == true
+                // Accueil IBO : les tuiles occupent tout l'écran, sans rail (il revient sur les autres écrans).
+                val noRail = fullscreen || (com.ultratv.tv.nativeapp.Brand.iboHome && backEntry?.destination?.route == Routes.HOME)
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         Modifier
                             .fillMaxSize()
                             .background(MaterialTheme.colorScheme.background)
-                            .padding(start = if (fullscreen) 0.dp else com.ultratv.tv.nativeapp.ui.components.RAIL_COLLAPSED_PX.let { (it / 2f).dp }),
+                            .padding(start = if (noRail) 0.dp else com.ultratv.tv.nativeapp.ui.components.RAIL_COLLAPSED_PX.let { (it / 2f).dp }),
                     ) { NavGraph(nav) }
-                    if (!fullscreen) SidebarNav(navController = nav)
+                    if (!noRail) SidebarNav(navController = nav)
                 }
             }
         }
@@ -550,7 +552,16 @@ private fun NavGraph(nav: androidx.navigation.NavHostController) {
         popExitTransition = { ExitTransition.None },
     ) {
         screen(Routes.HOME) {
-            HomeScreen(
+            if (com.ultratv.tv.nativeapp.Brand.iboHome) com.ultratv.tv.nativeapp.ui.home.IboHomeScreen(
+                onGoLive = { nav.navigate(Routes.LIVE) },
+                onGoMovies = { nav.navigate(Routes.MOVIES) },
+                onGoSeries = { nav.navigate(Routes.SERIES) },
+                onGoGuide = { nav.navigate(Routes.GUIDE) },
+                onGoFavorites = { nav.navigate(Routes.FAVORITES) },
+                onGoSearch = { nav.navigate(Routes.SEARCH) },
+                onGoAccount = { nav.navigate("account") },
+                onGoSettings = { nav.navigate(Routes.SETTINGS) },
+            ) else HomeScreen(
                 onGoLive = { nav.navigate(Routes.LIVE) },
                 onGoMovies = { nav.navigate(Routes.MOVIES) },
                 onGoSeries = { nav.navigate(Routes.SERIES) },

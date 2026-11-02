@@ -4,6 +4,6 @@
     android:label="@string/app_name"
     android:hint="@string/search_hint"
     android:includeInGlobalSearch="true"
-    android:searchSuggestAuthority="com.kanaani.tv.search"
+    android:searchSuggestAuthority="@string/search_authority"
     android:searchSuggestIntentAction="android.intent.action.VIEW"
     android:searchSuggestThreshold="2" />
