@@ -4,8 +4,6 @@ name: Build Kanaani APK
 on:
   push:
     branches: [main]
-    # تاغ بيبلّش بـ v (مثلاً v1.2.79) بيعمل ريليز وبينشر التطبيق برابط تحميل مباشر.
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -76,23 +74,28 @@ jobs:
           path: out/classic/*.apk
           retention-days: 30
 
-      # ريليز: بس لما ننشر تاغ v*. الملف Kanaani-IBO.apk اسمه ثابت، فرابط "latest" ما بيتغيّر:
+      # ريليز: مع كل بناء ناجح على main، باسم الإصدار من ملف VERSION (مثلاً v1.2.78). إذا موجود بيتحدّث.
+      # Kanaani-IBO.apk اسمه ثابت، فرابط التحميل المباشر ما بيتغيّر:
       # https://github.com/<owner>/<repo>/releases/latest/download/Kanaani-IBO.apk
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/main'
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="v$(cat VERSION)"
           mkdir -p release
           cp out/ibo/Kanaani-IBO-*-universal.apk release/Kanaani-IBO.apk
           cp out/ibo/Kanaani-IBO-*-arm64-v8a.apk release/Kanaani-IBO-arm64-v8a.apk
           cp out/ibo/Kanaani-IBO-*-armeabi-v7a.apk release/Kanaani-IBO-armeabi-v7a.apk
-          gh release create "${GITHUB_REF_NAME}" release/*.apk \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "Kanaani ${GITHUB_REF_NAME}" \
-            --notes "تطبيق كنعاني. للتحميل المباشر: Kanaani-IBO.apk (بيشتغل على كل الأجهزة)." \
-            --latest
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" release/*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Kanaani $TAG" \
+              --notes "تطبيق كنعاني. للتحميل المباشر: Kanaani-IBO.apk (بيشتغل على كل الأجهزة)." \
+              --latest
+          fi
 
       - name: Upload Kanaani IBO APKs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
