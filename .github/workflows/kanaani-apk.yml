@@ -86,8 +86,7 @@ jobs:
           TAG="v$(cat VERSION)"
           mkdir -p release
           cp out/ibo/Kanaani-IBO-*-universal.apk release/Kanaani-IBO.apk
-          cp out/ibo/Kanaani-IBO-*-arm64-v8a.apk release/Kanaani-IBO-arm64-v8a.apk
-          cp out/ibo/Kanaani-IBO-*-armeabi-v7a.apk release/Kanaani-IBO-armeabi-v7a.apk
+          # نسخة وحدة بس بالريليز: Kanaani-IBO.apk بتشتغل على كل الأجهزة (جوال، شاشة، بوكس، تابلت أندرويد).
           # update.json : lu par l'application pour proposer la mise à jour (versionCode = x*10000 + y*100 + z).
           IFS=. read -r MA MI PA < VERSION
           CODE=$((MA * 10000 + MI * 100 + PA))
@@ -97,13 +96,19 @@ jobs:
             "$CODE" "$(cat VERSION)" "$GITHUB_REPOSITORY" "$TAG" "$SHA" "$SIZE" > release/update.json
           cat release/update.json
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/*.apk release/update.json --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" release/Kanaani-IBO.apk release/update.json --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" release/*.apk release/update.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            gh release create "$TAG" release/Kanaani-IBO.apk release/update.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "Kanaani $TAG" \
               --notes "تطبيق كنعاني. للتحميل المباشر: Kanaani-IBO.apk (بيشتغل على كل الأجهزة)." \
               --latest
           fi
+          # تنظيف: بكل الريليزات بيضل Kanaani-IBO.apk و update.json بس.
+          for t in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName -q '.[].tagName'); do
+            for a in $(gh release view "$t" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name'); do
+              case "$a" in Kanaani-IBO.apk|update.json) ;; *) gh release delete-asset "$t" "$a" --repo "$GITHUB_REPOSITORY" -y ;; esac
+            done
+          done
 
       - name: Upload Kanaani IBO APKs
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

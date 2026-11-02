@@ -36,6 +36,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -188,6 +193,7 @@ fun Field(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     BasicTextField(
         value = value,
         onValueChange = onChange,
@@ -196,10 +202,21 @@ fun Field(
         textStyle = TextStyle(color = C.text, fontFamily = Manrope, fontSize = 16.sp),
         cursorBrush = SolidColor(C.accent),
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Text, imeAction = imeAction),
+        // Télécommande : le clavier ne s'ouvre PAS en passant sur le champ (il bloquerait la navigation), seulement sur OK.
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (password) KeyboardType.Password else KeyboardType.Text,
+            imeAction = imeAction,
+            autoCorrectEnabled = false,
+            showKeyboardOnFocus = false,
+        ),
         keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }, onSearch = { onDone() }),
         modifier = modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onPreviewKeyEvent { e ->
+                if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter)) {
+                    keyboard?.show(); true
+                } else false
+            }
             .height(46.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(C.card)

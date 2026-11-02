@@ -163,11 +163,13 @@ object Updater {
     fun install(ctx: Context) {
         val f = apk ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.packageManager.canRequestPackageInstalls()) {
-            runCatching {
+            // Écran « Installer des applications inconnues » ; certaines TV ne l'ont pas : on ouvre alors directement
+            // l'installeur, qui demande lui-même l'autorisation.
+            val opened = runCatching {
                 ctx.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            return
+            }.isSuccess
+            if (opened) return
         }
         val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.updates", f)
         runCatching {
