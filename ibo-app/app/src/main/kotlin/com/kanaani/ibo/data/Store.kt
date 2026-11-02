@@ -71,6 +71,19 @@ object Store {
         sp.edit().putInt("aspect", aspect).apply()
     }
 
+    /** Catégories masquées par l'utilisateur, par type : ni affichées ni chargées (et exclues de « Tous »). */
+    var hiddenCategories by mutableStateOf<Map<String, Set<String>>>(emptyMap())
+        private set
+
+    fun isHidden(kind: String, categoryId: String?) = categoryId != null && hiddenCategories[kind]?.contains(categoryId) == true
+
+    fun setHidden(kind: String, ids: Set<String>, hide: Boolean) {
+        val cur = hiddenCategories[kind].orEmpty()
+        val upd = if (hide) cur + ids else cur - ids
+        hiddenCategories = hiddenCategories + (kind to upd)
+        if (upd.isEmpty()) sp.edit().remove("hidden_$kind").apply() else sp.edit().putString("hidden_$kind", upd.joinToString("\n")).apply()
+    }
+
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("kanaani", Context.MODE_PRIVATE)
         language = sp.getString("lang", "ar") ?: "ar"
@@ -82,6 +95,9 @@ object Store {
             sp.getString("order_$k", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
         }
         categoryNames = listOf("live", "movie", "series").associateWith { k -> decodeNames(sp.getString("names_$k", null)) }
+        hiddenCategories = listOf("live", "movie", "series").associateWith { k ->
+            sp.getString("hidden_$k", null)?.split('\n')?.filter { it.isNotEmpty() }?.toSet().orEmpty()
+        }
         watching = decodeWatch(sp.getString("watching", null))
         aspect = sp.getInt("aspect", 0).mod(3)
         homeTheme = sp.getInt("home_theme", 0).coerceIn(0, 2)
@@ -132,7 +148,8 @@ object Store {
     /** Catégories dans l'ordre et sous les noms choisis par l'utilisateur. */
     fun arrange(kind: String, list: List<Category>): List<Category> {
         val names = categoryNames[kind].orEmpty()
-        return ordered(kind, list) { it.id }.map { c -> names[c.id]?.let { c.copy(name = it) } ?: c }
+        val hidden = hiddenCategories[kind].orEmpty()
+        return ordered(kind, list.filterNot { it.id in hidden }) { it.id }.map { c -> names[c.id]?.let { c.copy(name = it) } ?: c }
     }
 
     private fun decodeNames(raw: String?): Map<String, String> = runCatching {

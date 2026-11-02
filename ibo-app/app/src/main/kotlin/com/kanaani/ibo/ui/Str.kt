@@ -108,12 +108,16 @@ object Str {
         "Press OK on a category to pick it up, move it with ▲ ▼, then press OK again to drop it. On a phone, use the arrows next to each category.",
         "اضغط OK على الفئة لتمسكها، حرّكها بالأسهم ▲ ▼، واضغط OK مرة ثانية لتثبيتها. على الجوال استعمل الأسهم اللي جنب كل فئة.",
         "לחצו OK על קטגוריה כדי לתפוס אותה, הזיזו עם ▲ ▼ ולחצו OK שוב כדי לשחרר. בטלפון השתמשו בחצים שליד כל קטגוריה.")
+    val hide get() = t("Hide", "إخفاء", "הסתרה")
+    val show get() = t("Show", "إظهار", "הצגה")
+    val hiddenTag get() = t("Hidden", "مخفي", "מוסתר")
+    val showAll get() = t("Show all", "إظهار الكل", "הצג הכול")
     val orderReset get() = t("Restore original order", "إرجاع الترتيب الأصلي", "שחזור הסדר המקורי")
     val moving get() = t("Moving", "عم تتحرك", "בהזזה")
     val reorderHint get() = t(
-        "OK selects categories (✓). Remote colour keys: 🔴 up · 🔵 down · 🟢 rename — or press ▶ to reach the buttons. Without a selection, they act on the category under the cursor.",
-        "OK بيحدد الفئات (✓). أزرار الريموت الملوّنة: 🔴 لفوق · 🔵 لتحت · 🟢 إعادة تسمية، أو اضغط ▶ للأزرار اللي على الجنب. بدون تحديد بتشتغل على الفئة اللي واقف عليها.",
-        "OK בוחר קטגוריות (✓). כפתורי הצבע בשלט: 🔴 למעלה · 🔵 למטה · 🟢 שינוי שם, או ▶ לכפתורים בצד. בלי בחירה הם פועלים על הקטגוריה המסומנת.")
+        "OK selects categories (✓). Remote colour keys: 🔴 up · 🔵 down · 🟢 rename · 🟡 hide/show — or press ▶ to reach the buttons. Without a selection, they act on the category under the cursor.",
+        "OK بيحدد الفئات (✓). أزرار الريموت الملوّنة: 🔴 لفوق · 🔵 لتحت · 🟢 إعادة تسمية · 🟡 إخفاء/إظهار، أو اضغط ▶ للأزرار اللي على الجنب. بدون تحديد بتشتغل على الفئة اللي واقف عليها.",
+        "OK בוחר קטגוריות (✓). כפתורי הצבע בשלט: 🔴 למעלה · 🔵 למטה · 🟢 שינוי שם · 🟡 הסתרה/הצגה, או ▶ לכפתורים בצד. בלי בחירה הם פועלים על הקטגוריה המסומנת.")
     fun selected(n: Int) = t("$n selected", "محدد $n", "נבחרו $n")
     val focusedCategory get() = t("Category under cursor", "الفئة اللي واقف عليها", "הקטגוריה שמסומנת")
     val moveUp get() = t("Up", "لفوق", "למעלה")

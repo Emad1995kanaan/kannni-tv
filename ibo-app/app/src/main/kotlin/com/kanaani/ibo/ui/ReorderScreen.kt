@@ -112,17 +112,22 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
         commit(if (top) group + rest else rest + group, group.firstOrNull())
     }
 
-    // Touches de couleur de la télécommande : rouge = monter, bleu = descendre, vert = renommer.
+    val hidden = Store.hiddenCategories[s.kind].orEmpty()
+    /** Masquer / afficher : si tout est déjà masqué on affiche, sinon on masque. */
+    fun toggleHidden(ids: Set<String>) { if (ids.isNotEmpty()) Store.setHidden(s.kind, ids, hide = !ids.all { it in hidden }) }
+
+    // Touches de couleur de la télécommande : rouge = monter, bleu = descendre, vert = renommer, jaune = masquer / afficher.
     androidx.compose.runtime.DisposableEffect(renaming) {
         if (renaming == null) com.kanaani.ibo.KeyHook.handler = handler@{ e ->
             val code = e.keyCode
             if (code != android.view.KeyEvent.KEYCODE_PROG_RED && code != android.view.KeyEvent.KEYCODE_PROG_BLUE &&
-                code != android.view.KeyEvent.KEYCODE_PROG_GREEN) return@handler false
+                code != android.view.KeyEvent.KEYCODE_PROG_GREEN && code != android.view.KeyEvent.KEYCODE_PROG_YELLOW) return@handler false
             if (e.action == android.view.KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
                 val t = targets()
                 when (code) {
                     android.view.KeyEvent.KEYCODE_PROG_RED -> if (t.isNotEmpty()) shift(t, -1)
                     android.view.KeyEvent.KEYCODE_PROG_BLUE -> if (t.isNotEmpty()) shift(t, +1)
+                    android.view.KeyEvent.KEYCODE_PROG_YELLOW -> toggleHidden(t)
                     else -> if (t.size == 1) renaming = t.first()
                 }
             }
@@ -151,6 +156,7 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
                             itemsIndexed(list, key = { _, id -> id }) { i, id ->
                                 val isSel = id in selected
                                 val renamed = Store.categoryNames[s.kind]?.containsKey(id) == true
+                                val isHidden = id in hidden
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Tile(
                                         { selected = if (isSel) selected - id else selected + id },
@@ -172,11 +178,13 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
                                             Spacer(Modifier.width(10.dp))
                                             Label("${i + 1}", 13.sp, C.text3, modifier = Modifier.width(34.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Label(nameOf(id), 14.sp, weight = if (isSel) FontWeight.Bold else FontWeight.Medium)
+                                                Label(nameOf(id), 14.sp, if (isHidden) C.text3 else C.text, if (isSel) FontWeight.Bold else FontWeight.Medium)
                                                 if (renamed) Label("${Str.originalName}: ${originals[id] ?: ""}", 10.sp, C.text3)
                                             }
+                                            if (isHidden) Label("🚫 " + Str.hiddenTag, 11.sp, C.error, FontWeight.Bold)
                                         }
                                     }
+                                    ArrowButton(if (isHidden) "🚫" else "👁", enabled = true) { toggleHidden(setOf(id)) }
                                     ArrowButton("▲", enabled = i > 0) { shift(setOf(id), -1) }
                                     ArrowButton("▼", enabled = i < list.lastIndex) { shift(setOf(id), +1) }
                                 }
@@ -187,7 +195,7 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
                 // Panneau d'actions à côté de la liste : une seule pression ▶ depuis n'importe quelle catégorie.
                 Column(
                     Modifier.width(200.dp).fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Label(if (selected.isEmpty()) Str.focusedCategory else Str.selected(selected.size), 12.sp, Color(0xFF8FB3FF), FontWeight.Bold)
                     SideButton("▲ " + Str.moveUp, Color(0xFFE53935)) { targets().takeIf { it.isNotEmpty() }?.let { shift(it, -1) } }
@@ -195,7 +203,10 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
                     SideButton("⤒ " + Str.toTop, null) { targets().takeIf { it.isNotEmpty() }?.let { toEdge(it, top = true) } }
                     SideButton("⤓ " + Str.toBottom, null) { targets().takeIf { it.isNotEmpty() }?.let { toEdge(it, top = false) } }
                     SideButton("✎ " + Str.rename, Color(0xFF43A047)) { targets().takeIf { it.size == 1 }?.let { renaming = it.first() } }
+                    val t = targets()
+                    SideButton(if (t.isNotEmpty() && t.all { it in hidden }) "👁 " + Str.show else "🚫 " + Str.hide, Color(0xFFFDD835)) { toggleHidden(targets()) }
                     if (selected.isNotEmpty()) SideButton("✕ " + Str.clearSelection, null) { selected = emptySet() }
+                    if (hidden.isNotEmpty()) SideButton("👁 " + Str.showAll + " (${hidden.size})", null) { Store.setHidden(s.kind, hidden, hide = false) }
                     Spacer(Modifier.weight(1f))
                     SideButton(Str.orderReset, null) {
                         Store.setCategoryOrder(s.kind, emptyList())
@@ -219,7 +230,7 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
 /** Bouton du panneau ; [dot] : pastille de la touche de couleur correspondante sur la télécommande. */
 @Composable
 private fun SideButton(label: String, dot: Color?, onClick: () -> Unit) {
-    Tile(onClick, Modifier.fillMaxWidth().height(36.dp), RoundedCornerShape(10.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.03f) {
+    Tile(onClick, Modifier.fillMaxWidth().height(33.dp), RoundedCornerShape(10.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.03f) {
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Label(label, 13.sp, weight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (dot != null) Box(Modifier.size(12.dp).clip(RoundedCornerShape(6.dp)).background(dot))

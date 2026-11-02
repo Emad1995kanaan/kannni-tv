@@ -128,7 +128,11 @@ class Xtream(val host: String, val username: String, val password: String) {
     suspend fun showCategories() = categories("get_series_categories")
 
     /** categoryId null = toutes les chaînes. */
-    suspend fun channels(categoryId: String?): List<Channel> = cached("live:${categoryId ?: "*"}") {
+    /** categoryId null = toutes les chaînes, sauf celles des catégories masquées. */
+    suspend fun channels(categoryId: String?): List<Channel> =
+        loadChannels(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("live", it.categoryId) } else l }
+
+    private suspend fun loadChannels(categoryId: String?): List<Channel> = cached("live:${categoryId ?: "*"}") {
         val extra = categoryId?.let { "&category_id=${enc(it)}" } ?: ""
         get(url("get_live_streams", extra))?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
@@ -137,7 +141,10 @@ class Xtream(val host: String, val username: String, val password: String) {
     } ?: emptyList()
 
     /** categoryId null = tous les films. */
-    suspend fun movies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
+    suspend fun movies(categoryId: String?): List<Movie> =
+        loadMovies(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("movie", it.categoryId) } else l }
+
+    private suspend fun loadMovies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
         get(url("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
             Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"),
@@ -146,7 +153,10 @@ class Xtream(val host: String, val username: String, val password: String) {
     } ?: emptyList()
 
     /** categoryId null = toutes les séries. */
-    suspend fun shows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
+    suspend fun shows(categoryId: String?): List<Show> =
+        loadShows(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("series", it.categoryId) } else l }
+
+    private suspend fun loadShows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
         get(url("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("series_id") ?: return@mapNotNull null
             Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"),

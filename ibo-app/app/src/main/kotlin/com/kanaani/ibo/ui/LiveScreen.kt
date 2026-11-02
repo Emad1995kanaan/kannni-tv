@@ -55,7 +55,7 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
     val ctx = LocalContext.current
     val serverCategories by produceState<List<Category>?>(null, x) { value = x.liveCategories() }
     // Ordre choisi dans Réglages › Ordre des chaînes.
-    val categories = remember(serverCategories, Store.categoryOrders, Store.categoryNames) { serverCategories?.let { Store.arrange("live", it) } }
+    val categories = remember(serverCategories, Store.categoryOrders, Store.categoryNames, Store.hiddenCategories) { serverCategories?.let { Store.arrange("live", it) } }
     var reload by remember { mutableIntStateOf(0) }
     val favs = Store.favorites
     // Les favoris ne relancent le chargement que si on est DANS la catégorie Favoris.
