@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Leanback is the Android TV launcher category. Optional so phones still work. -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <!-- Téléphone et tablette : le toucher simulé (souris, stylet) suffit, rien d'autre n'est exigé du matériel. -->
+    <uses-feature android:name="android.hardware.faketouch" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Google TV : « Continuer à regarder » (Watch Next) et chaîne « Favoris » de l'accueil. -->
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Auto-update: download + install newer APK from GitHub Releases. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Reminders: AlarmManager.setExactAndAllowWhileIdle + notification. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Synchro du catalogue (plusieurs minutes, dizaines de Mo) : WorkManager la promeut en
+         service de premier plan « dataSync » pour que le système ne tue pas le processus. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- IPTV cleartext tradeoff: many Xtream hosts are HTTP-only
+         (plain http:// portal + stream URLs), so cleartext traffic must stay
+         permitted. @xml/network_security_config is the single source of truth
+         for that policy. The android:usesCleartextTraffic flag was removed as
+         redundant — when android:networkSecurityConfig is present it governs
+         cleartext, and keeping both risks the two drifting out of sync. -->
+    <!-- Touche « Voix » de la recherche : on ne l'affiche que si un service de reconnaissance existe. -->
+    <queries>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
+        <!-- Fournisseur TV du système (chaînes d'accueil, Watch Next) et invite « Afficher la chaîne sur l'accueil ? » :
+             sans ces déclarations, le filtrage de visibilité des paquets (Android 11+, targetSdk 30+) les cache à l'appli
+             sur les systèmes dont le fournisseur n'est pas « forceQueryable » — ContentResolver lève alors
+             « Unknown URL content://android.media.tv/… » à chaque écriture (NVIDIA Shield), et l'invite paraît absente. -->
+        <provider android:authorities="android.media.tv" />
+        <intent><action android:name="android.media.tv.action.REQUEST_CHANNEL_BROWSABLE" /></intent>
+    </queries>
+
+    <application
+        android:name=".UltraTvApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:banner="@drawable/banner"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.UltraTv"
+        android:networkSecurityConfig="@xml/network_security_config">
+
+        <!-- Google Cast SDK: points at our OptionsProvider for the receiver id. -->
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.ultratv.tv.nativeapp.cast.UltraTvCastOptionsProvider" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density|fontScale"
+            android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.UltraTv.Starting">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Liens profonds ultratv:// (rappels, Google TV) : résolus dans le catalogue local. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ultratv" />
+            </intent-filter>
+            <!-- Recherche vocale (Assistant) : ouvre l'écran Recherche avec la requête. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
+        </activity>
+
+        <!-- FileProvider for the auto-update flow: exposes our internal
+             filesDir/updates/*.apk as a content:// URI so the system installer
+             can read it across the package boundary. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_provider_paths" />
+        </provider>
+
+        <!-- Disable WorkManager's default startup so our HiltAndroidApp can
+             provide a Hilt-aware WorkerFactory via Configuration.Provider. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.ultratv.tv.nativeapp.data.reminders.ReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ultratv.tv.nativeapp.REMINDER_FIRE" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.ultratv.tv.nativeapp.data.recording.RecordingAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ultratv.tv.nativeapp.RECORDING_START" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Recherche globale Android TV : suggestions (lecture seule, réservée au système de recherche). -->
+        <provider
+            android:name="com.ultratv.tv.nativeapp.data.tv.SearchSuggestionsProvider"
+            android:authorities="${applicationId}.search"
+            android:exported="true"
+            android:readPermission="android.permission.GLOBAL_SEARCH" />
+
+        <receiver
+            android:name="com.ultratv.tv.nativeapp.data.tv.TvInitializeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.media.tv.action.INITIALIZE_PROGRAMS" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

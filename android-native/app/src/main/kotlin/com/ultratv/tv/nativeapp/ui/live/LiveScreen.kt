@@ -1,0 +1,768 @@
+package com.ultratv.tv.nativeapp.ui.live
+
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import kotlinx.coroutines.flow.collectLatest
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.tv.material3.Text
+import com.ultratv.tv.nativeapp.data.db.ChannelEntity
+import com.ultratv.tv.nativeapp.data.db.EpgEntity
+import com.ultratv.tv.nativeapp.i18n.DesignStrings
+import com.ultratv.tv.nativeapp.i18n.LocalDs
+import com.ultratv.tv.nativeapp.ui.common.ModalFocusScope
+import com.ultratv.tv.nativeapp.ui.common.RequestInitialFocus
+import com.ultratv.tv.nativeapp.ui.common.EpgClock
+import com.ultratv.tv.nativeapp.ui.common.design
+import com.ultratv.tv.nativeapp.ui.common.prettyCategoryName
+import com.ultratv.tv.nativeapp.ui.design.FocusSurface
+import com.ultratv.tv.nativeapp.ui.design.LiveBadge
+import com.ultratv.tv.nativeapp.i18n.liveHeaderCount
+import androidx.compose.ui.graphics.luminance
+import com.ultratv.tv.nativeapp.ui.design.designT
+import com.ultratv.tv.nativeapp.ui.design.LogoBox
+import com.ultratv.tv.nativeapp.ui.design.Manrope
+import com.ultratv.tv.nativeapp.ui.design.PillButton
+import com.ultratv.tv.nativeapp.ui.design.ProgressLine
+import com.ultratv.tv.nativeapp.ui.design.Sora
+import com.ultratv.tv.nativeapp.ui.design.Ux
+import com.ultratv.tv.nativeapp.ui.design.spx
+
+/**
+ * Direct (maquette Direct.dc.html) : catégories avec compteurs · liste des chaînes · aperçu.
+ * TV, réglage « Aperçu vidéo dans le Direct » actif : la chaîne focalisée JOUE dans l'aperçu après un court délai, sur
+ * la session partagée avec le lecteur ([SharedLiveSession]) — une seule connexion fournisseur à la fois. OK sur cette
+ * chaîne passe en plein écran sans recharger le flux ; Retour la rend à l'aperçu. Sinon : logo + programme en cours
+ * (aucun flux) et OK ouvre le lecteur comme avant.
+ */
+@Composable
+fun LiveScreen(onPlay: (url: String, title: String) -> Unit, vm: LiveViewModel = hiltViewModel()) {
+    val D = LocalDs.current
+    val cats by vm.categories.collectAsState()
+    val selected by vm.selectedCategory.collectAsState()
+    val locked by vm.lockedChannels.collectAsState()
+    val nowNext by vm.nowNext.collectAsState()
+    val favs by vm.favoriteIds.collectAsState()
+    val channels = vm.channels.collectAsLazyPagingItems()
+    val langView by vm.langView.collectAsState()
+    val langCounts by vm.langCounts.collectAsState()
+    var langPanel by remember { mutableStateOf(false) }
+    var pinPrompt by remember { mutableStateOf<ChannelEntity?>(null) }
+    var actionsFor by remember { mutableStateOf<ChannelEntity?>(null) }
+    // Chaîne focalisée : flux HORS composition — un état lu ici recomposait tout l'écran (catégories, liste, aperçu)
+    // à chaque déplacement du D-pad ; seul l'aperçu change, une fois le focus posé depuis 300 ms.
+    val focusedChannel = remember { kotlinx.coroutines.flow.MutableStateFlow<ChannelEntity?>(null) }
+    // Le focus initial (programmatique) ne doit PAS changer de catégorie : seule une action de la télécommande le fait.
+    var userMoved by remember { mutableStateOf(false) }
+    // L'aperçu suit la chaîne focalisée avec ~300 ms de recul ; dans les catégories : première chaîne de la catégorie.
+    var previewChannel by remember { mutableStateOf<ChannelEntity?>(null) }
+    LaunchedEffect(Unit) { focusedChannel.debounce(300).collect { previewChannel = it } }
+    LaunchedEffect(selected) { focusedChannel.value = null; previewChannel = null }
+
+    // ── Aperçu vidéo (TV) ──
+    val shared = com.ultratv.tv.nativeapp.ui.player.engine.LocalSharedLive.current
+    val pvm: LivePreviewViewModel = hiltViewModel()
+    val pv by pvm.previewPrefs.state.collectAsState()
+    val userPrefs by pvm.userPrefs.collectAsState()
+    val touchUi = com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current
+    val videoPreview = shared != null && LivePreviewPolicy.enabled(pv.mode, pvm.lowRam, touchUi)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Même rendu (SurfaceView / TextureView) que le lecteur plein écran : la vue vidéo passe de l'un à l'autre.
+    val textureView = com.ultratv.tv.nativeapp.ui.player.engine.useTextureView(userPrefs?.videoSurface ?: "auto", touchUi)
+    val createShared: () -> com.ultratv.tv.nativeapp.ui.player.engine.PlaybackSession = { pvm.createSession(ctx, shared!!.scope, shared, textureView) }
+    // Retour du plein écran : la chaîne du dernier zap reste en aperçu jusqu'au premier déplacement dans la liste.
+    var holdAfterReturn by remember { mutableStateOf(shared?.owner == com.ultratv.tv.nativeapp.ui.player.engine.LiveOwner.PREVIEW) }
+    val playingKey by (shared?.channelKey ?: kotlinx.coroutines.flow.MutableStateFlow<String?>(null)).collectAsState()
+    var heldChannel by remember { mutableStateOf<ChannelEntity?>(null) }
+    LaunchedEffect(holdAfterReturn, playingKey) { heldChannel = if (holdAfterReturn) playingKey?.let { pvm.channelByKey(it) } else null }
+    val resumeTick = remember { kotlinx.coroutines.flow.MutableStateFlow(0) }
+    val lockedNow by androidx.compose.runtime.rememberUpdatedState(locked)
+    val holdNow by androidx.compose.runtime.rememberUpdatedState(holdAfterReturn)
+    val mutedNow by androidx.compose.runtime.rememberUpdatedState(!pv.sound)
+    if (videoPreview && shared != null) {
+        LaunchedEffect(shared) { shared.env = pvm.env() }
+        LaunchedEffect(pv.sound) { shared.applyPreviewMuted(!pv.sound) }
+        // La chaîne focalisée depuis [delayMs] (réglable, ~0,7 s) joue dans l'aperçu ; collectLatest : un focus qui
+        // change pendant la résolution annule le lancement (jamais deux flux).
+        LaunchedEffect(shared, pv.delayMs) {
+            kotlinx.coroutines.flow.combine(focusedChannel, resumeTick) { c, _ -> c }
+                .debounce(LivePreviewPolicy.delayMs(pv.delayMs))
+                .collectLatest { c ->
+                    if (c == null || c.isSeparator) return@collectLatest
+                    val row = channelKey(c)
+                    when (LivePreviewPolicy.decide(shared.owner, shared.rowKey, row, row in lockedNow, holdNow)) {
+                        LivePreviewPolicy.Action.KEEP -> Unit
+                        LivePreviewPolicy.Action.STOP -> shared.stopPreview()
+                        LivePreviewPolicy.Action.START -> {
+                            val (target, url) = vm.previewStream(c)
+                            if (focusedChannel.value?.id != c.id) return@collectLatest   // focus parti pendant la résolution
+                            shared.preview(row, channelKey(target), url, mutedNow, createShared)
+                        }
+                    }
+                }
+        }
+    } else LaunchedEffect(Unit) { shared?.stopPreview() }
+    // Écran quitté ou appli en arrière-plan : l'aperçu ferme son flux (jamais le plein écran, qui a pris la main).
+    DisposableEffect(shared) { onDispose { shared?.stopPreview() } }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, shared) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            when (ev) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> shared?.stopPreview()
+                androidx.lifecycle.Lifecycle.Event.ON_START -> {
+                    if (shared?.owner == com.ultratv.tv.nativeapp.ui.player.engine.LiveOwner.PREVIEW) holdAfterReturn = true
+                    resumeTick.value++
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+    // Lecture d'une chaîne de la liste. Aperçu prêt sur cette ligne : il devient le plein écran tel quel. Sinon son flux
+    // est fermé AVANT que le lecteur n'ouvre le sien (connexion unique).
+    fun play(c: ChannelEntity, exact: Boolean = false) {
+        if (videoPreview && shared != null) shared.openFullscreen(channelKey(c), createShared) else shared?.stopPreview()
+        vm.resolveAndPlay(c, exact, onReady = onPlay)
+    }
+    val firstChannel = remember { FocusRequester() }
+    LaunchedEffect(selected, channels.itemCount > 0) {
+        // Retour du plein écran : c'est la chaîne regardée qui reçoit le focus (ChannelList, returnToKey), pas la première.
+        if (!userMoved && channels.itemCount > 0 && !(holdAfterReturn && playingKey != null)) { kotlinx.coroutines.delay(250); runCatching { firstChannel.requestFocus() } }
+    }
+    val current = cats.firstOrNull { it.id == selected }
+    // Aucune chaîne en local : « hors ligne » / « erreur de source » en carte pleine (sinon l'écran vide habituel).
+    val noLocalData = cats.none { it.id != CATEGORY_FAVORITES && it.id != CATEGORY_ALL && it.count > 0 }
+    if (noLocalData && com.ultratv.tv.nativeapp.ui.common.NoDataStateCard(Modifier.padding(start = 72.design))) return
+
+    val touch = com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current
+    val twoPane = touch && com.ultratv.tv.nativeapp.ui.mobile.usesTwoPane(com.ultratv.tv.nativeapp.ui.common.LocalUiWidthDp.current)
+    if (touch) MobileLiveLayout(
+        cats = cats, selected = selected, onSelect = { vm.selectCategory(it) }, channels = channels, locked = locked, favs = favs, nowNext = nowNext, vm = vm,
+        langView = langView, onLang = { langPanel = true }, twoPane = twoPane, D = D,
+        selectedChannel = previewChannel ?: focusedChannel.value,
+        onTapChannel = { c ->
+            // Téléphone : un appui lit. Tablette : un appui choisit (aperçu), « Regarder » lit.
+            if (twoPane) { focusedChannel.value = c; previewChannel = c } else if ("${c.providerId}:${c.remoteId}" in locked) pinPrompt = c else play(c)
+        },
+        onWatch = { c -> if ("${c.providerId}:${c.remoteId}" in locked) pinPrompt = c else play(c) },
+        onActions = { actionsFor = it },
+    ) else Row(Modifier.fillMaxSize()) {
+        // ── Catégories (340) ──
+        Column(
+            Modifier.width(340.design).fillMaxHeight().padding(start = 48.design, end = 24.design, top = 54.design),
+            verticalArrangement = Arrangement.spacedBy(10.design),
+        ) {
+            Text(D.directTitle, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 40.spx, modifier = Modifier.padding(bottom = 10.design), maxLines = 1)
+            val markMoved = Modifier.onPreviewKeyEvent { e -> if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && (e.key == androidx.compose.ui.input.key.Key.DirectionUp || e.key == androidx.compose.ui.input.key.Key.DirectionDown)) userMoved = true; false }
+            val focus = LocalFocusManager.current
+            LazyColumn(modifier = markMoved, verticalArrangement = Arrangement.spacedBy(10.design), contentPadding = PaddingValues(bottom = 54.design)) {
+                items(cats, key = { it.id }, contentType = { "cat" }) { c ->
+                    CategoryRow(
+                        label = when (c.id) { CATEGORY_FAVORITES -> D.catFavorites; CATEGORY_ALL -> D.catAll; else -> prettyCategoryName(c.name.orEmpty()) },
+                        count = c.count, selected = c.id == selected, locked = c.locked,
+                        onFocus = { if (userMoved) vm.selectCategory(c.id) },
+                        onClick = { vm.selectCategory(c.id); focus.moveFocus(FocusDirection.Right) },
+                    )
+                }
+            }
+        }
+        Box(Modifier.width(0.5f.dp1()).fillMaxHeight().background(Ux.Surface))
+
+        // ── Chaînes (640) ──
+        Column(
+            Modifier.width(640.design).fillMaxHeight().padding(horizontal = 32.design).padding(top = 54.design)
+                // Haut/Bas dans la liste : l'aperçu suit de nouveau le focus (fin du maintien après le plein écran).
+                .onPreviewKeyEvent { e -> if (holdAfterReturn && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && (e.key == androidx.compose.ui.input.key.Key.DirectionUp || e.key == androidx.compose.ui.input.key.Key.DirectionDown)) holdAfterReturn = false; false },
+            verticalArrangement = Arrangement.spacedBy(12.design),
+        ) {
+            val name = when (selected) { CATEGORY_FAVORITES -> D.catFavorites; CATEGORY_ALL -> D.catAll; else -> prettyCategoryName(current?.name.orEmpty()) }
+            // « <Catégorie> · <N> chaînes » : le nom (tel quel, éventuellement dans une autre écriture) et le compteur (langue
+            // de l'interface) sont deux textes distincts — jamais de mélange d'écritures dans une même ligne de texte, le
+            // nom long est coupé (…) sans jamais masquer le compteur. Sections affichées seulement s'il y en a plusieurs.
+            Row(Modifier.fillMaxWidth().padding(bottom = 4.design), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    name, color = Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 24.spx, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text(
+                    "  ·  " + D.liveHeaderCount(current?.count ?: 0, current?.sections ?: 0),
+                    color = Ux.Text3, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 22.spx, maxLines = 1, softWrap = false,
+                )
+            }
+            ChannelList(channels, locked, favs, nowNext, selected, vm,
+                onFocusChannel = { focusedChannel.value = it },
+                onPlay = { c -> if ("${c.providerId}:${c.remoteId}" in locked) pinPrompt = c else play(c) },
+                onActions = { actionsFor = it },
+                emptyText = if (selected == CATEGORY_FAVORITES) D.noFavorites else D.noChannels, categoryName = name, first = firstChannel,
+                returnToKey = if (holdAfterReturn) playingKey else null)
+        }
+
+        // ── Aperçu ──
+        // Une seule recherche (avant : trois copies complètes de la liste paginée à chaque recomposition).
+        // Retour du plein écran : la chaîne qui joue (dernier zap) tant que l'utilisateur n'a pas bougé.
+        val shown = (if (holdAfterReturn) heldChannel else null) ?: previewChannel ?: (0 until minOf(channels.itemCount, 20)).firstNotNullOfOrNull { i -> channels.peek(i)?.takeIf { !it.isSeparator } }
+        // Vidéo affichée seulement si l'aperçu joue la ligne montrée (sinon logo : jamais l'image d'une autre chaîne).
+        val videoSession = shared?.session?.takeIf {
+            videoPreview && playingKey != null && shared.owner == com.ultratv.tv.nativeapp.ui.player.engine.LiveOwner.PREVIEW &&
+                shown != null && (holdAfterReturn || shared.rowKey == channelKey(shown))
+        }
+        Preview(
+            channel = shown,
+            now = shown?.let { nowNext[it.id]?.first },
+            next = shown?.let { nowNext[it.id]?.second },
+            D = D, modifier = Modifier.weight(1f).fillMaxHeight(),
+            video = if (videoSession != null && shared != null) ({ logo -> SharedVideo(videoSession, shared, logo) }) else null,
+        )
+    }
+
+    pinPrompt?.let { ch ->
+        com.ultratv.tv.nativeapp.ui.parental.PinPromptDialog(
+            title = ch.title,
+            onUnlocked = { pinPrompt = null; play(ch) },
+            onCancel = { pinPrompt = null },
+        )
+    }
+    actionsFor?.let { ch ->
+        val isFav = ch.remoteId in favs
+        val isLocked = "${ch.providerId}:${ch.remoteId}" in locked
+        var variants by remember(ch.id) { mutableStateOf<List<ChannelEntity>>(emptyList()) }
+        var variantPicker by remember(ch.id) { mutableStateOf(false) }
+        LaunchedEffect(ch.id) { variants = vm.variantsOf(ch) }
+        if (variantPicker) com.ultratv.tv.nativeapp.ui.design.ChoiceDialog(D.otherQualities, variants.map { it.id to (qualityName(it.quality) + " · " + it.title) }, ch.id, { id -> variants.firstOrNull { it.id == id }?.let { play(it, exact = true) }; variantPicker = false; actionsFor = null }, { variantPicker = false })
+        else ModalFocusScope(onBack = { actionsFor = null }, modifier = Modifier.background(Ux.Scrim)) {
+            Column(Modifier.clip(RoundedCornerShape(28.design)).background(Ux.SurfaceDeep).padding(48.design), verticalArrangement = Arrangement.spacedBy(16.design)) {
+                Text(ch.title, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 36.spx, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(560.design))
+                PillButton(if (isFav) D.removeFavorite else D.addFavorite, onClick = { vm.toggleFavorite(ch); actionsFor = null }, bg = Ux.Surface2, modifier = Modifier.width(560.design))
+                PillButton(if (isLocked) D.unlockChannel else D.lockChannel, onClick = { vm.toggleLock(ch); actionsFor = null }, bg = Ux.Surface2, modifier = Modifier.width(560.design))
+                if (variants.size > 1) PillButton(D.otherQualities, onClick = { variantPicker = true }, bg = Ux.Surface2, modifier = Modifier.width(560.design))
+                PillButton(D.close, onClick = { actionsFor = null }, bg = Ux.Surface, modifier = Modifier.width(560.design))
+            }
+        }
+    }
+}
+
+private fun Float.dp1() = androidx.compose.ui.unit.Dp(this)
+
+@Composable
+private fun CategoryRow(label: String, count: Int, selected: Boolean, locked: Boolean, onFocus: () -> Unit, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick, shape = RoundedCornerShape(16.design),
+        bg = if (selected) Ux.Surface2 else Color.Transparent,
+        ringWidth = 5.design,
+        modifier = Modifier.fillMaxWidth().height(64.designT).onFocusChanged { if (it.isFocused) onFocus() },
+    ) { f ->
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            if (selected && !f) Box(Modifier.width(4.design).fillMaxHeight().background(Ux.Accent)) else Spacer(Modifier.width(4.design))
+            Row(Modifier.weight(1f).padding(horizontal = 16.design), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (if (locked) "🔒 " else "") + label,
+                    color = if (f) Ux.TextOnLight else if (selected) Ux.Text else Ux.Text2,
+                    fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 24.spx, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Content),
+                )
+                Spacer(Modifier.width(8.design))
+                Text(java.text.NumberFormat.getIntegerInstance().format(count), color = if (f) Ux.OnFocus2 else if (selected) Ux.Text else Ux.Muted, fontFamily = Manrope, fontSize = 24.spx, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelList(
+    channels: LazyPagingItems<ChannelEntity>,
+    locked: Set<String>,
+    favs: Set<String>,
+    nowNext: Map<Long, Pair<EpgEntity?, EpgEntity?>>,
+    selected: String,
+    vm: LiveViewModel,
+    onFocusChannel: (ChannelEntity) -> Unit,
+    onPlay: (ChannelEntity) -> Unit,
+    onActions: (ChannelEntity) -> Unit,
+    emptyText: String,
+    categoryName: String = "",
+    first: FocusRequester = remember { FocusRequester() },
+    highlightId: Long? = null,
+    /** Chaîne regardée au retour du plein écran (« fournisseur:chaîne ») : la liste y défile et lui donne le focus, une fois. */
+    returnToKey: String? = null,
+) {
+    val state = rememberLazyListState()
+    LaunchedEffect(selected) { state.scrollToItem(0) }
+    // Retour du plein écran : défilement jusqu'à la chaîne regardée puis focus dessus. Avant, le focus restait sur la
+    // première ligne (chaîne 40 regardée, 13EME RUE focalisée : OK relançait une autre chaîne). Une seule fois par retour :
+    // une page de la liste qui arrive ensuite ne doit pas reprendre le focus à l'utilisateur.
+    val returnFocus = remember { FocusRequester() }
+    var returnDone by remember(returnToKey) { mutableStateOf(false) }
+    LaunchedEffect(returnToKey, channels.itemCount, selected) {
+        val key = returnToKey ?: return@LaunchedEffect
+        if (returnDone) return@LaunchedEffect
+        val idx = (0 until channels.itemCount).firstOrNull { i -> channels.peek(i)?.let { channelKey(it) } == key } ?: return@LaunchedEffect
+        kotlinx.coroutines.delay(150)   // après le scrollToItem(0) d'un changement de catégorie
+        state.scrollToItem((idx - 2).coerceAtLeast(0))
+        repeat(15) {
+            if (runCatching { returnFocus.requestFocus() }.getOrDefault(false)) { returnDone = true; return@LaunchedEffect }
+            kotlinx.coroutines.delay(50)
+        }
+    }
+    // Seules les lignes visibles interrogent le guide.
+    // Les IDENTIFIANTS visibles sont suivis (pas seulement les positions) : à l'arrivée des données ou au changement de
+    // catégorie, les positions visibles restent 0…8 et le guide n'était demandé qu'au premier défilement.
+    // Avant : snapshotFlow sur layoutInfo.visibleItemsInfo — réévalué et une liste allouée à CHAQUE pixel défilé.
+    // Désormais : première ligne visible (change une fois par ligne) + liste chargée (change à chaque page reçue) ;
+    // fenêtre fixe de [VISIBLE_WINDOW] lignes, un peu plus que l'écran (le guide des 2-3 suivantes est préchargé).
+    LaunchedEffect(state, channels) {
+        kotlinx.coroutines.flow.combine(
+            snapshotFlow { state.firstVisibleItemIndex }.distinctUntilChanged(),
+            snapshotFlow { channels.itemSnapshotList },
+        ) { first, snap -> visibleChannelIds(snap, first, VISIBLE_WINDOW) }
+            .distinctUntilChanged().collect { ids -> vm.setVisible(ids) }
+    }
+    // Section de chaque ligne et numéro de doublon PRÉCALCULÉS une fois par page reçue (incrémental : seules les lignes
+    // nouvelles sont parcourues). Avant : remontée jusqu'à l'index 0 à chaque image de défilement (en-tête collant) et
+    // relecture des lignes précédentes pour chaque ligne composée (badge « #2 ») — des centaines de peek() par image.
+    // itemSnapshotList est un état de LazyPagingItems (paging-compose 3.3) : le lire ne copie rien.
+    val snapshot = channels.itemSnapshotList
+    val rowIndexHolder = remember(channels) { arrayOfNulls<LiveRowIndex>(1) }
+    val rowIndex = remember(snapshot) { LiveRowIndex.build(snapshot, rowIndexHolder[0]).also { rowIndexHolder[0] = it } }
+    // Section courante : le dernier séparateur au-dessus (ou à) la première ligne visible (en-tête collant), en O(1).
+    // L'en-tête de section a SA place au-dessus de la liste (plus de superposition : il masquait le haut de la première
+    // chaîne, agrandie par la sélection). Place réservée seulement si la liste a au moins une section à afficher.
+    val hasSections = remember(rowIndex, categoryName) { rowIndex.hasSectionOtherThan(categoryName) }
+    val stickyLabel by remember(state, rowIndex, categoryName) {
+        androidx.compose.runtime.derivedStateOf {
+            val first = state.firstVisibleItemIndex
+            // Séparateur encore visible en haut de la liste : l'en-tête garde la section PRÉCÉDENTE jusqu'à ce qu'il soit
+            // passé (pas de libellé affiché deux fois l'un sous l'autre) ; en tout début de liste, sa propre section.
+            val at = if (first > 0 && rowIndex.isSeparatorAt(first)) first - 1 else first
+            rowIndex.sectionLabelAt(at)?.takeIf { it.isNotBlank() && !sameLabel(it, categoryName) }
+        }
+    }
+    var firstFocused by remember { mutableStateOf(false) }
+    if (channels.itemCount == 0 && channels.loadState.refresh !is androidx.paging.LoadState.Loading) {
+        Text(emptyText, color = Ux.Text3, fontFamily = Manrope, fontSize = 24.spx, lineHeight = 32.spx, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        return
+    }
+    Column {
+        if (hasSections) Box(Modifier.fillMaxWidth().height(56.designT).padding(top = 6.design, bottom = 6.design)) { stickyLabel?.let { SectionHeader(it) } }
+        val safeKey0 = com.ultratv.tv.nativeapp.ui.common.rememberSafeItemKey(channels) { it.id }
+        LazyColumn(state = state, modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.design), contentPadding = PaddingValues(bottom = 54.design, top = 10.design)) {
+            items(count = channels.itemCount, key = safeKey0, contentType = { idx -> if (channels.peek(idx)?.isSeparator == true) "section" else "channel" }) { i ->
+                val c = channels[i]
+                when {
+                    c == null -> Spacer(Modifier.fillMaxWidth().height(88.designT))
+                    // Séparateur : en-tête de section, NON focalisable (le D-pad le saute), non lisible.
+                    // En tête de liste, la place réservée au-dessus l'affiche déjà ; libellé vide : rien.
+                    c.isSeparator -> if (i > 0 && c.title.isNotBlank() && !sameLabel(c.title, categoryName)) SectionHeader(c.title)
+                    else -> ChannelRow(
+                        c, position = if (c.seq > 0) c.seq else i + 1, locked = "${c.providerId}:${c.remoteId}" in locked, favorite = c.remoteId in favs,
+                        now = nowNext[c.id]?.first,
+                        highlighted = c.id == highlightId,
+                        variant = rowIndex.variantAt(i),
+                        modifier = (if (com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current) Modifier else if (i == 0 || (i == 1 && channels.peek(0)?.isSeparator == true)) Modifier.focusRequester(first).onFocusChanged { firstFocused = it.isFocused } else Modifier)
+                            .then(if (returnToKey != null && channelKey(c) == returnToKey) Modifier.focusRequester(returnFocus) else Modifier),
+                        onFocus = { onFocusChannel(c) }, onClick = { onPlay(c) }, onLongClick = { onActions(c) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun sameLabel(a: String, b: String) = a.trim().equals(b.trim(), ignoreCase = true)
+
+/** En-tête de section (séparateur du fournisseur) : barre accent 4×20, libellé majuscules 18 gras #A1A1AA, filet à droite. */
+@Composable
+private fun SectionHeader(label: String) {
+    Row(Modifier.fillMaxWidth().height(44.designT).padding(horizontal = 4.design), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.width(4.design).height(20.design).background(Ux.Accent))
+        Spacer(Modifier.width(14.design))
+        Text(label.uppercase(), color = Ux.Text3, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, letterSpacing = 2.sp(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Spacer(Modifier.width(16.design))
+        Box(Modifier.fillMaxWidth().height(0.5f.dp1()).background(Ux.Surface2))
+    }
+}
+
+/**
+ * Pastille de qualité (4K ambre, FHD blanc, HD bleu, SD gris) : fond plein, texte gras, contraste AA garanti
+ * (voir [com.ultratv.tv.nativeapp.ui.design.BadgePalette]) sur ligne au repos comme focalisée, thème sombre comme clair.
+ */
+@Composable
+internal fun QualityBadge(quality: Int, focused: Boolean) {
+    val chip = com.ultratv.tv.nativeapp.ui.design.BadgePalette.quality(quality, darkRow = rowIsDark(focused)) ?: return
+    val text = when (quality) { 4 -> "4K"; 3 -> "FHD"; 2 -> "HD"; else -> "SD" }
+    if (com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current) {
+        Text(text, color = Color(chip.fg), fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, maxLines = 1,
+            modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color(chip.bg)).padding(horizontal = 7.dp, vertical = 3.dp))
+        return
+    }
+    Text(text, color = Color(chip.fg), fontFamily = Manrope, fontWeight = FontWeight.ExtraBold, fontSize = 22.spx, maxLines = 1, softWrap = false,
+        modifier = Modifier.clip(RoundedCornerShape(6.design)).background(Color(chip.bg)).padding(horizontal = 10.design, vertical = 3.design))
+}
+
+/** Fond de la ligne qui porte les pastilles : focalisée = [Ux.Cta] (blanc en sombre, encre en clair), sinon [Ux.SurfaceDeep]. */
+internal fun rowIsDark(focused: Boolean): Boolean = (if (focused) Ux.Cta else Ux.SurfaceDeep).luminance() < 0.4f
+
+/** Mentions techniques qui distinguent deux flux de même nom et même qualité (« RAW », « HEVC », « 50 FPS »…). */
+internal fun flagsLabel(flags: Int): String? {
+    val P = com.ultratv.tv.nativeapp.data.repo.ChannelNameParser
+    val parts = buildList {
+        if (flags and P.F_RAW != 0) add("RAW")
+        if (flags and P.F_HEVC != 0) add("HEVC")
+        if (flags and P.F_HDR != 0) add("HDR")
+        if (flags and P.F_60FPS != 0) add("60 FPS") else if (flags and P.F_50FPS != 0) add("50 FPS")
+        if (flags and P.F_LQ != 0) add("LQ")
+        if (flags and P.F_BACKUP != 0) add("BACKUP")
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+/** Même flux affiché à l'identique (nom, qualité, mentions) : les doublons du fournisseur se suivent dans la liste. */
+internal fun sameStream(a: ChannelEntity, b: ChannelEntity) =
+    !a.isSeparator && !b.isSeparator && a.quality == b.quality && a.flags == b.flags && a.title.trim().equals(b.title.trim(), ignoreCase = true)
+
+/** Lignes dont on demande le guide : un peu plus qu'un écran (10 lignes TV, ~11 sur téléphone). */
+internal const val VISIBLE_WINDOW = 14
+
+/** Numéro de doublon maximal affiché (« #9 ») : au-delà, la série n'est plus comptée. */
+internal const val MAX_VARIANT = 9
+
+/** Identifiants des chaînes (hors séparateurs, hors lignes non chargées) de [first] à [first] + [window] − 1. */
+internal fun visibleChannelIds(items: List<ChannelEntity?>, first: Int, window: Int): List<Long> {
+    val from = first.coerceAtLeast(0)
+    val to = minOf(items.size, from + window)
+    if (from >= to) return emptyList()
+    val out = ArrayList<Long>(to - from)
+    for (i in from until to) items[i]?.takeIf { !it.isSeparator }?.let { out += it.id }
+    return out
+}
+
+/**
+ * Contexte précalculé des lignes CHARGÉES de la liste du Direct : pour chaque index, le dernier séparateur à ou
+ * au-dessus (en-tête collant) et le numéro de doublon (badge « #2 », « #3 »… — même flux que les lignes précédentes,
+ * voir [sameStream], plafonné à [MAX_VARIANT]).
+ *
+ * Même résultat que les anciennes boucles (remontée de peek()) : une ligne non chargée (null) ne coupe pas la recherche
+ * de section mais coupe une série de doublons. Construit de façon incrémentale : si la nouvelle liste prolonge
+ * l'ancienne (mêmes objets en tête — page ajoutée en bas), seules les lignes nouvelles sont calculées ; sinon
+ * (nouvelle catégorie, page ajoutée en haut, rechargement) tout est recalculé, une fois par page reçue.
+ */
+internal class LiveRowIndex private constructor(
+    private val items: List<ChannelEntity?>,
+    /** Index du dernier séparateur à ou au-dessus de chaque ligne ; −1 s'il n'y en a pas. */
+    private val sectionOf: IntArray,
+    private val variants: IntArray,
+) {
+    val size: Int get() = items.size
+
+    /** Libellé de la section de la ligne [index] ; au-delà de la liste chargée, celui de la dernière ligne chargée. */
+    fun sectionLabelAt(index: Int): String? {
+        if (items.isEmpty() || index < 0) return null
+        val s = sectionOf[minOf(index, items.size - 1)]
+        return if (s < 0) null else items[s]?.title
+    }
+
+    fun isSeparatorAt(index: Int): Boolean = index in items.indices && items[index]?.isSeparator == true
+
+    /** Au moins une section (séparateur au libellé non vide, différent du nom de la catégorie) dans les lignes chargées. */
+    fun hasSectionOtherThan(categoryName: String): Boolean {
+        for (i in items.indices) if (sectionOf[i] == i) { val t = items[i]?.title; if (!t.isNullOrBlank() && !sameLabel(t, categoryName)) return true }
+        return false
+    }
+
+    /** Numéro de doublon de la ligne [index] (1 = premier flux, pas de badge). */
+    fun variantAt(index: Int): Int = if (index in variants.indices) variants[index] else 1
+
+    companion object {
+        fun build(items: List<ChannelEntity?>, previous: LiveRowIndex? = null): LiveRowIndex {
+            val n = items.size
+            val reuse = previous != null && previous.size in 1..n && prefixSame(previous.items, items)
+            val start = if (reuse) previous!!.size else 0
+            val sectionOf = IntArray(n)
+            val variants = IntArray(n)
+            if (reuse) {
+                System.arraycopy(previous!!.sectionOf, 0, sectionOf, 0, start)
+                System.arraycopy(previous.variants, 0, variants, 0, start)
+            }
+            for (i in start until n) {
+                val c = items[i]
+                val prevSection = if (i > 0) sectionOf[i - 1] else -1
+                sectionOf[i] = if (c?.isSeparator == true) i else prevSection
+                val p = if (i > 0) items[i - 1] else null
+                variants[i] = if (c != null && p != null && sameStream(p, c)) minOf(variants[i - 1] + 1, MAX_VARIANT) else 1
+            }
+            return LiveRowIndex(items, sectionOf, variants)
+        }
+
+        /** Les lignes de [old] sont les MÊMES objets en tête de [new] (comparaison de références, sans allocation). */
+        private fun prefixSame(old: List<ChannelEntity?>, new: List<ChannelEntity?>): Boolean {
+            for (i in old.indices) if (old[i] !== new[i]) return false
+            return true
+        }
+    }
+}
+
+/** Qualité + mentions techniques : ce qui différencie les doublons d'une même chaîne. */
+@Composable
+internal fun StreamBadges(quality: Int, flags: Int, focused: Boolean, variant: Int = 1) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.design), verticalAlignment = Alignment.CenterVertically) {
+        // Flux de secours : même nom, même qualité, mêmes mentions que la ligne précédente → numéroté (« 2 », « 3 »…).
+        if (variant > 1) Text("#$variant", color = if (focused) Ux.OnFocus2 else Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 20.spx, maxLines = 1)
+        flagsLabel(flags)?.let { Text(it, color = if (focused) Ux.OnFocus2 else Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 20.spx, maxLines = 1) }
+        QualityBadge(quality, focused)
+    }
+}
+
+/** Ligne chaîne de 88 px : numéro, logo en boîte fixe 72×48 (Fit), nom (1 ligne), programme en cours, qualité. */
+@Composable
+private fun ChannelRow(
+    c: ChannelEntity, position: Int, locked: Boolean, favorite: Boolean, now: EpgEntity?,
+    modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit, highlighted: Boolean = false, variant: Int = 1,
+) {
+    if (com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current) { TouchChannelRow(c, position, locked, favorite, now, highlighted, onClick, onLongClick, variant); return }
+    FocusSurface(
+        onClick = onClick, onLongClick = onLongClick, shape = RoundedCornerShape(18.design), bg = Ux.SurfaceDeep,
+        focusedScale = 1.03f, ringWidth = 5.design,
+        modifier = modifier.fillMaxWidth().height(88.designT).onFocusChanged { if (it.isFocused) onFocus() },
+    ) { f ->
+        Row(Modifier.fillMaxSize().padding(horizontal = 20.design), verticalAlignment = Alignment.CenterVertically) {
+            Text(position.toString(), color = if (f) Ux.TextOnLight else Ux.Muted, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, maxLines = 1, softWrap = false, modifier = Modifier.width(56.design))
+            Spacer(Modifier.width(20.design))
+            LogoBox(c.logo, c.title, Modifier.width(72.design).height(48.design), radius = 10, pad = 5, bg = if (f) Color(0xFFE4E4E7) else Ux.Surface2)
+            Spacer(Modifier.width(20.design))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.design)) {
+                Text((if (locked) "🔒 " else "") + c.title, color = if (f) Ux.TextOnLight else Ux.Text, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 24.spx, maxLines = 1, overflow = TextOverflow.Ellipsis, style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
+                Text(now?.title.orEmpty(), color = if (f) Ux.OnFocus2 else Ux.Text3, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (favorite) { Text("♥", color = Ux.Accent, fontSize = 22.spx, maxLines = 1); Spacer(Modifier.width(10.design)) }
+            com.ultratv.tv.nativeapp.ui.common.LangBadge(c.lang, f)
+            Spacer(Modifier.width(8.design))
+            StreamBadges(c.quality, c.flags, f, variant)
+        }
+    }
+}
+
+// ───────────────────────── Aperçu ─────────────────────────
+
+/**
+ * Vidéo de la session partagée dans le cadre d'aperçu. La vue vidéo (SurfaceView / TextureView choisie par appareil)
+ * est REPRISE telle quelle, ici comme dans le lecteur plein écran : changement de parent, pas de rechargement.
+ * Le logo reste par-dessus jusqu'à la première image (chargement, erreur).
+ */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun SharedVideo(session: com.ultratv.tv.nativeapp.ui.player.engine.PlaybackSession, shared: com.ultratv.tv.nativeapp.ui.player.engine.SharedLiveSession, logo: @Composable () -> Unit) {
+    val st by session.state.collectAsState()
+    DisposableEffect(session) { shared.hostAttached(); onDispose { shared.hostDetached() } }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        androidx.compose.runtime.key(session) {
+            androidx.compose.ui.viewinterop.AndroidView(factory = { session.takeVideoView() }, modifier = Modifier.fillMaxSize())
+        }
+        if (st.phase != com.ultratv.tv.nativeapp.ui.player.engine.Phase.PLAYING || !st.hasPicture) logo()
+    }
+}
+
+@Composable
+private fun Preview(
+    channel: ChannelEntity?, now: EpgEntity?, next: EpgEntity?, D: DesignStrings, modifier: Modifier,
+    /** Vidéo de l'aperçu (session partagée) ; reçoit le logo à superposer tant que l'image n'est pas là. */
+    video: (@Composable (logo: @Composable () -> Unit) -> Unit)? = null,
+) {
+    Column(modifier.padding(start = 32.design, end = 96.design, top = 54.design, bottom = 54.design), verticalArrangement = Arrangement.spacedBy(28.design)) {
+        if (channel == null) return@Column
+        Box(Modifier.fillMaxWidth().height(450.design).clip(RoundedCornerShape(24.design)).background(Ux.Tone), contentAlignment = Alignment.Center) {
+            val logo: @Composable () -> Unit = { LogoBox(channel.logo, channel.title, Modifier.fillMaxSize(), radius = 24, pad = 96, bg = Ux.Tone) }
+            if (video != null) video(logo) else logo()
+        }
+        if (now != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.design)) {
+                LiveBadge(D.live)
+                Text("${EpgClock.range(now.startMs, now.endMs)}", color = Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, maxLines = 1)
+            }
+        }
+        Text(now?.title ?: channel.title, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 44.spx, lineHeight = 48.spx, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (now != null) {
+            val frac = ((System.currentTimeMillis() - now.startMs).toFloat() / (now.endMs - now.startMs).coerceAtLeast(1)).coerceIn(0f, 1f)
+            Box(Modifier.fillMaxWidth().height(8.design).clip(RoundedCornerShape(4.design)).background(Ux.Surface2)) { ProgressLine(frac, Modifier.fillMaxWidth(), heightPx = 8) }
+            now.description?.takeIf { it.isNotBlank() }?.let {
+                Text(it, color = Ux.Text2, fontFamily = Manrope, fontSize = 24.spx, lineHeight = 35.spx, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Text(D.noProgramInfo, color = Ux.Text3, fontFamily = Manrope, fontSize = 24.spx, maxLines = 2)
+        }
+        if (next != null) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.design), modifier = Modifier.padding(top = 8.design)) {
+                Text(D.upNext, color = Ux.Text3, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, letterSpacing = 2.sp(), maxLines = 1)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("${EpgClock.hm(next.startMs)} · ${next.title}", color = Ux.Text, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    Spacer(Modifier.width(16.design))
+                    Text(durationText(D, next.endMs - next.startMs), color = Ux.Text3, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+private fun Int.sp() = androidx.compose.ui.unit.TextUnit(this.toFloat(), androidx.compose.ui.unit.TextUnitType.Sp)
+
+private fun durationText(D: DesignStrings, ms: Long): String {
+    val m = (ms / 60_000).toInt()
+    return if (m >= 60) D.hourShort.format(m / 60) + if (m % 60 != 0) " " + D.minShort.format(m % 60) else "" else D.minShort.format(m)
+}
+
+private fun qualityName(q: Int) = when (q) { 4 -> "4K"; 3 -> "FHD"; 2 -> "HD"; 1 -> "SD"; else -> "—" }
+
+
+// ───────────────────────── Tactile (téléphone / tablette) ─────────────────────────
+
+/** Ligne chaîne tactile (maquette MobileDirect) : numéro, logo 48×32, nom + progression + programme, qualité. Sélectionnée (tablette) = fond plein. */
+@Composable
+private fun TouchChannelRow(c: ChannelEntity, position: Int, locked: Boolean, favorite: Boolean, now: EpgEntity?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, variant: Int = 1) {
+    val ink = if (selected) Ux.TextOnLight else Ux.Text
+    val sub = if (selected) Ux.OnFocus2 else Ux.Text3
+    val frac = now?.let { ((System.currentTimeMillis() - it.startMs).toFloat() / (it.endMs - it.startMs).coerceAtLeast(1)).coerceIn(0f, 1f) }
+    FocusSurface(
+        onClick = onClick, onLongClick = onLongClick, shape = RoundedCornerShape(14.dp), bg = if (selected) Ux.Cta else Ux.SurfaceDeep,
+        modifier = Modifier.fillMaxWidth().height(64.dp),
+    ) { _ ->
+        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(position.toString(), color = if (selected) Ux.OnFocus2 else Ux.Muted, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, softWrap = false, modifier = Modifier.width(30.dp))
+            LogoBox(c.logo, c.title, Modifier.width(48.dp).height(32.dp), radius = 12, pad = 4, bg = if (selected) Color(0xFFE4E4E7) else Ux.Surface2)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text((if (locked) "🔒 " else "") + c.title, color = ink, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, style = androidx.compose.ui.text.TextStyle(textDirection = androidx.compose.ui.text.style.TextDirection.Content))
+                if (frac != null) ProgressLine(frac, Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp)), heightPx = 6, track = if (selected) Color(0xFFD4D4D8) else Ux.Surface2)
+                Text(now?.title.orEmpty(), color = sub, fontFamily = Manrope, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (favorite) Text("♥", color = Ux.Accent, fontSize = 13.sp, maxLines = 1)
+            com.ultratv.tv.nativeapp.ui.common.LangBadge(c.lang, selected)
+            StreamBadges(c.quality, c.flags, selected, variant)
+        }
+    }
+}
+
+/**
+ * Direct tactile. Compact : titre + pilule de langues, puces de catégories, liste (séparateurs en en-têtes collants).
+ * Large (tablette) : liste à gauche (420 dp), aperçu à droite ; un appui sur une ligne la choisit, « Regarder » la lit.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun MobileLiveLayout(
+    cats: List<DirectCategory>, selected: String, onSelect: (String) -> Unit, channels: LazyPagingItems<ChannelEntity>,
+    locked: Set<String>, favs: Set<String>, nowNext: Map<Long, Pair<EpgEntity?, EpgEntity?>>, vm: LiveViewModel,
+    langView: com.ultratv.tv.nativeapp.data.repo.LangView, onLang: () -> Unit, twoPane: Boolean, D: DesignStrings,
+    selectedChannel: ChannelEntity?, onTapChannel: (ChannelEntity) -> Unit, onWatch: (ChannelEntity) -> Unit, onActions: (ChannelEntity) -> Unit,
+) {
+    val current = cats.firstOrNull { it.id == selected }
+    val name = when (selected) { CATEGORY_FAVORITES -> D.catFavorites; CATEGORY_ALL -> D.catAll; else -> prettyCategoryName(current?.name.orEmpty()) }
+    val shown = selectedChannel ?: channels.itemSnapshotList.firstOrNull { it?.isSeparator == false }
+    Row(Modifier.fillMaxSize()) {
+        Column(Modifier.then(if (twoPane) Modifier.width(420.dp) else Modifier.weight(1f)).fillMaxHeight().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(D.directTitle, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 28.sp, maxLines = 1)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    com.ultratv.tv.nativeapp.ui.mobile.SearchAction()
+                }
+            }
+            val chipLabel = { c: DirectCategory -> (if (c.locked) "🔒 " else "") + when (c.id) { CATEGORY_FAVORITES -> D.catFavorites; CATEGORY_ALL -> D.catAll; else -> prettyCategoryName(c.name.orEmpty()) } }
+            if (twoPane) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.heightIn(max = 120.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                cats.forEach { c -> CatChip(chipLabel(c), c.id == selected) { onSelect(c.id) } }
+            } else androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(cats, key = { it.id }, contentType = { "chip" }) { c -> CatChip(chipLabel(c), c.id == selected) { onSelect(c.id) } }
+            }
+            com.ultratv.tv.nativeapp.ui.mobile.TouchRefresh(Modifier.weight(1f).fillMaxWidth()) {
+                ChannelList(channels, locked, favs, nowNext, selected, vm, onFocusChannel = {}, onPlay = onTapChannel, onActions = onActions,
+                    emptyText = if (selected == CATEGORY_FAVORITES) D.noFavorites else D.noChannels, categoryName = name, highlightId = if (twoPane) shown?.id else null)
+            }
+        }
+        if (twoPane) {
+            Box(Modifier.width(0.5f.dp1()).fillMaxHeight().background(Ux.Surface))
+            MobilePreview(shown, shown?.let { nowNext[it.id]?.first }, shown?.let { it.remoteId in favs }, D, onWatch, { shown?.let(vm::toggleFavorite) }, { shown?.let(onActions) }, Modifier.weight(1f).fillMaxHeight())
+        }
+    }
+}
+
+@Composable
+private fun CatChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(onClick = onClick, shape = RoundedCornerShape(20.dp), bg = if (selected) Ux.Cta else Ux.Surface, modifier = Modifier.height(40.dp).semantics { this.selected = selected; role = androidx.compose.ui.semantics.Role.Tab }) { _ ->
+        Box(Modifier.padding(horizontal = 14.dp).height(40.dp), contentAlignment = Alignment.Center) {
+            Text(label, color = if (selected) Ux.TextOnLight else Ux.Text2, fontFamily = Manrope, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Aperçu de tablette (maquette TabletteDirect) : visuel 16:9, badge EN DIRECT + horaires, titre, résumé, actions. */
+@Composable
+private fun MobilePreview(channel: ChannelEntity?, now: EpgEntity?, favorite: Boolean?, D: DesignStrings, onWatch: (ChannelEntity) -> Unit, onFavorite: () -> Unit, onMore: () -> Unit, modifier: Modifier) {
+    val M = com.ultratv.tv.nativeapp.ui.mobile.LocalMobileStrings.current
+    Column(modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        if (channel == null) { Text(M.noPreview, color = Ux.Text3, fontFamily = Manrope, fontSize = 15.sp); return@Column }
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(20.dp)).background(Ux.Tone).clickable(onClickLabel = M.tapToWatchFull) { onWatch(channel) },
+            contentAlignment = Alignment.Center,
+        ) { LogoBox(channel.logo, channel.title, Modifier.fillMaxSize(), radius = 40, pad = 96, bg = Ux.Tone) }
+        if (now != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LiveBadge(D.live)
+            Text("${EpgClock.hm(now.startMs)} – ${EpgClock.hm(now.endMs)}", color = Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+        }
+        Text(now?.title ?: channel.title, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 26.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        now?.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ux.Text2, fontFamily = Manrope, fontSize = 15.sp, lineHeight = 23.sp, maxLines = 6, overflow = TextOverflow.Ellipsis) }
+            ?: Text(D.noProgramInfo, color = Ux.Text3, fontFamily = Manrope, fontSize = 15.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PillButton(D.watch, { onWatch(channel) }, heightPx = 88, hPadPx = 40, fontPx = 30, weight = FontWeight.Bold, bg = Ux.Cta, iconPath = com.ultratv.tv.nativeapp.ui.design.Icons.Play, iconFill = true)
+            PillButton(if (favorite == true) D.removeFavorite else D.addFavorite, onFavorite, heightPx = 88, hPadPx = 36, fontPx = 28)
+            PillButton("⋯", onMore, heightPx = 88, hPadPx = 32, fontPx = 28)
+        }
+    }
+}

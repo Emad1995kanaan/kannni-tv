@@ -1,0 +1,556 @@
+package com.ultratv.tv.nativeapp.ui.guide
+
+import com.ultratv.tv.nativeapp.ui.design.designT
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.ultratv.tv.nativeapp.data.replay.ReplayAvailability
+import com.ultratv.tv.nativeapp.data.replay.ReplayUrls
+import androidx.compose.runtime.Composable
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.tv.material3.Text
+import com.ultratv.tv.nativeapp.data.db.ChannelDao
+import com.ultratv.tv.nativeapp.data.db.ChannelEntity
+import com.ultratv.tv.nativeapp.data.db.EpgDao
+import com.ultratv.tv.nativeapp.data.db.EpgEntity
+import com.ultratv.tv.nativeapp.data.reminders.RemindersScheduler
+import com.ultratv.tv.nativeapp.data.repo.ProviderRepository
+import com.ultratv.tv.nativeapp.data.recording.ConnectionPolicy
+import com.ultratv.tv.nativeapp.data.recording.ConnectionWarning
+import com.ultratv.tv.nativeapp.data.recording.ScheduleResult
+import com.ultratv.tv.nativeapp.i18n.LocalDs
+import com.ultratv.tv.nativeapp.i18n.recConnectionBusy
+import com.ultratv.tv.nativeapp.i18n.recNoSpace
+import com.ultratv.tv.nativeapp.i18n.recNothing
+import com.ultratv.tv.nativeapp.i18n.recScheduled
+import com.ultratv.tv.nativeapp.i18n.remindSet
+import com.ultratv.tv.nativeapp.i18n.replayTag
+import com.ultratv.tv.nativeapp.i18n.yesterday
+import com.ultratv.tv.nativeapp.ui.common.Toaster
+import com.ultratv.tv.nativeapp.ui.common.EpgClock
+import com.ultratv.tv.nativeapp.ui.common.RequestInitialFocus
+import com.ultratv.tv.nativeapp.ui.common.design
+import com.ultratv.tv.nativeapp.ui.design.FocusSurface
+import com.ultratv.tv.nativeapp.ui.design.LogoBox
+import com.ultratv.tv.nativeapp.ui.design.Manrope
+import com.ultratv.tv.nativeapp.ui.design.Sora
+import com.ultratv.tv.nativeapp.ui.design.Ux
+import com.ultratv.tv.nativeapp.ui.design.spx
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import com.ultratv.tv.nativeapp.i18n.locale
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import javax.inject.Inject
+
+/** Fenêtre de la grille : 3 h en 6 créneaux de 30 min (maquette Guide.dc.html). */
+const val GUIDE_WINDOW_MS = 3 * 3_600_000L
+private const val SLOT_MS = 30 * 60_000L
+
+/** Début de fenêtre pour le jour [dayOffset] : aujourd'hui = demi-heure courante, ensuite 20:00. */
+fun guideWindowStart(nowMs: Long, dayOffset: Int): Long {
+    if (dayOffset == 0) return nowMs / SLOT_MS * SLOT_MS
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = nowMs; add(Calendar.DAY_OF_YEAR, dayOffset)
+        set(Calendar.HOUR_OF_DAY, 20); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }
+    return cal.timeInMillis
+}
+
+/**
+ * Certains guides contiennent des programmes qui se chevauchent ou se répètent : on garde l'ordre
+ * chronologique, on rogne le début des suivants et on écarte ceux entièrement recouverts.
+ */
+fun normalizeRow(items: List<EpgEntity>): List<EpgEntity> {
+    val out = ArrayList<EpgEntity>(items.size)
+    var cursor = Long.MIN_VALUE
+    for (p in items.sortedWith(compareBy({ it.startMs }, { it.endMs }))) {
+        if (p.endMs <= cursor || p.endMs <= p.startMs) continue
+        out += if (p.startMs < cursor) p.copy(startMs = cursor) else p
+        cursor = p.endMs
+    }
+    return out
+}
+
+/** Placement d'un programme dans la grille : fractions [0..1] de la fenêtre, tronquées aux bords. */
+data class Slot(val startFrac: Float, val widthFrac: Float)
+
+fun slotFor(startMs: Long, endMs: Long, windowStart: Long, windowMs: Long = GUIDE_WINDOW_MS): Slot? {
+    val s = maxOf(startMs, windowStart)
+    val e = minOf(endMs, windowStart + windowMs)
+    if (e <= s) return null
+    return Slot((s - windowStart).toFloat() / windowMs, (e - s).toFloat() / windowMs)
+}
+
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+@HiltViewModel
+class GuideGridViewModel @Inject constructor(
+    providerRepo: ProviderRepository,
+    private val channelDao: ChannelDao,
+    private val epgDao: EpgDao,
+    private val reminders: RemindersScheduler,
+    private val recScheduler: com.ultratv.tv.nativeapp.data.recording.RecordingScheduler,
+    recDao: com.ultratv.tv.nativeapp.data.db.RecordingDao,
+    private val replay: com.ultratv.tv.nativeapp.data.replay.ReplayService,
+    private val limits: com.ultratv.tv.nativeapp.data.prefs.ProviderLimitsStore,
+) : ViewModel() {
+    fun maxConnections(providerId: Long) = limits.maxConnections(providerId)
+    fun replayUrl(channel: ChannelEntity, prog: EpgEntity): String? = replay.urlFor(channel, prog)
+    fun armReplay(channel: ChannelEntity, prog: EpgEntity) = replay.armFromGuide(prog, channel.providerId)
+
+    /** Un enregistrement en cours occupe la (seule) connexion : le dialogue et « Regarder » le signalent. */
+    val recordingRunning: StateFlow<Boolean> = recDao.observeRunningCount().map { it > 0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun record(channel: ChannelEntity, prog: EpgEntity, wholeSeries: Boolean, onResult: (com.ultratv.tv.nativeapp.data.recording.ScheduleResult) -> Unit) {
+        viewModelScope.launch { onResult(recScheduler.schedule(channel, prog, wholeSeries)) }
+    }
+
+    private val pid = providerRepo.observeProviders().map { ps -> (ps.firstOrNull { it.active } ?: ps.firstOrNull())?.id }.distinctUntilChanged()
+
+    private val _windowStart = MutableStateFlow(guideWindowStart(System.currentTimeMillis(), 0))
+    val windowStart: StateFlow<Long> = _windowStart.asStateFlow()
+    fun setWindowStart(ms: Long) { _windowStart.value = ms }
+
+    /** Seules les chaînes ayant un guide dans la fenêtre sont des lignes (pas 55 000 lignes vides). */
+    val channels: kotlinx.coroutines.flow.Flow<PagingData<ChannelEntity>> = combine(pid, _windowStart) { id, w -> id to w }
+        .flatMapLatest { (id, w) ->
+            if (id == null) flowOf(PagingData.empty())
+            else Pager(PagingConfig(pageSize = 20, prefetchDistance = 10, initialLoadSize = 30, enablePlaceholders = false)) {
+                channelDao.pagedWithEpg(id, w, w + GUIDE_WINDOW_MS)
+            }.flow
+        }.cachedIn(viewModelScope)
+
+    private val _programmes = MutableStateFlow<Map<Long, List<EpgEntity>>>(emptyMap())
+    val programmes: StateFlow<Map<Long, List<EpgEntity>>> = _programmes.asStateFlow()
+    private val visible = MutableStateFlow<List<Long>>(emptyList())
+    fun setVisible(ids: List<Long>) { visible.value = ids }
+
+    init {
+        viewModelScope.launch {
+            combine(visible.debounce(150), _windowStart) { v, w -> v to w }.collect { (ids, w) ->
+                if (ids.isEmpty()) return@collect
+                val rows = ids.chunked(500).flatMap { epgDao.rangeForChannels(it, w, w + GUIDE_WINDOW_MS) }
+                _programmes.value = _programmes.value + rows.groupBy { it.channelId }.let { m -> ids.associateWith { normalizeRow(m[it].orEmpty()) } }
+            }
+        }
+        // Nouvelle fenêtre : on repart d'un cache vide (les lignes visibles sont rechargées).
+        viewModelScope.launch { _windowStart.collect { _programmes.value = emptyMap() } }
+    }
+
+    fun addReminder(channel: ChannelEntity, prog: EpgEntity) {
+        viewModelScope.launch {
+            reminders.add(
+                com.ultratv.tv.nativeapp.data.reminders.ReminderEntity(
+                    providerId = channel.providerId, channelRemoteId = channel.remoteId, channelName = channel.name,
+                    programmeTitle = prog.title, startMs = prog.startMs, endMs = prog.endMs,
+                ),
+            )
+        }
+    }
+}
+
+/** Guide TV (maquette Guide.dc.html) : colonne chaînes de 260, 6 créneaux de 30 min, ligne accent = maintenant. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+fun GuideGridScreen(onPlayChannel: (ChannelEntity) -> Unit, onPlayUrl: (url: String, title: String) -> Unit = { _, _ -> }, vm: GuideGridViewModel = hiltViewModel()) {
+    // Android 13+ : la permission de notification est demandée au PREMIER rappel (pas au lancement de l'app).
+    val notifCtx = androidx.compose.ui.platform.LocalContext.current
+    val notifLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    val askNotifications = {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(notifCtx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) runCatching { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+    }
+    val D = LocalDs.current
+    val channels = vm.channels.collectAsLazyPagingItems()
+    val programmes by vm.programmes.collectAsState()
+    val windowStart by vm.windowStart.collectAsState()
+    var day by remember { mutableStateOf(0) }
+    val now = remember(windowStart) { System.currentTimeMillis() }
+    val focus = LocalFocusManager.current
+    var inGrid by remember { mutableStateOf(false) }
+    // Programme focalisé : lu SEULEMENT par le panneau du bas (FocusedInfo) — lu ici, chaque déplacement recomposait
+    // tout l'écran et ses lignes.
+    val focusedProg = remember { mutableStateOf<Pair<ChannelEntity, EpgEntity>?>(null) }
+    var actionTarget by remember { mutableStateOf<Pair<ChannelEntity, EpgEntity>?>(null) }
+    val recordingRunning by vm.recordingRunning.collectAsState()
+
+    if (com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current) GuideTouch(
+        channels = channels, programmes = programmes, windowStart = windowStart, day = day, D = D, vm = vm,
+        onDay = { d -> day = d; vm.setWindowStart(guideWindowStart(System.currentTimeMillis(), d)) },
+        onShift = { dir -> vm.setWindowStart(windowStart + dir * 3 * SLOT_MS) },
+        onSelect = { c, p -> actionTarget = c to p },
+        onRemind = { c, p -> vm.addReminder(c, p); askNotifications(); Toaster.ok(D.remindSet) },
+    ) else Column(
+        Modifier.fillMaxSize().padding(start = 72.design, end = 96.design, top = 54.design)
+            // Au bord de la fenêtre, DROITE / GAUCHE font défiler le temps de 90 min au lieu de buter.
+            .onPreviewKeyEvent { e ->
+                if (e.type != KeyEventType.KeyDown || (e.key != Key.DirectionRight && e.key != Key.DirectionLeft)) return@onPreviewKeyEvent false
+                val dir = if (e.key == Key.DirectionRight) FocusDirection.Right else FocusDirection.Left
+                // Hors de la grille (jours, en-tête) : navigation normale — avant, la touche était
+                // avalée et GAUCHE ne menait plus au menu depuis « Hier ».
+                if (!inGrid) return@onPreviewKeyEvent false
+                if (!focus.moveFocus(dir)) vm.setWindowStart(windowStart + if (dir == FocusDirection.Right) 3 * SLOT_MS else -3 * SLOT_MS)
+                true
+            },
+        verticalArrangement = Arrangement.spacedBy(28.design),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.SpaceBetween) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.design)) {
+                Text(D.tvGuide, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 48.spx, maxLines = 1)
+                val dayLabel = dayName(D, day)
+                Text("$dayLabel · ${EpgClock.range(windowStart, windowStart + GUIDE_WINDOW_MS)}", color = Ux.Text3, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.design)) {
+                for (d in -1..2) DayChip(dayName(D, d), selected = d == day) { day = d; vm.setWindowStart(guideWindowStart(System.currentTimeMillis(), d)) }
+            }
+        }
+
+        // En-tête des créneaux
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.design)) {
+            Spacer(Modifier.width(260.design))
+            Row(Modifier.weight(1f)) {
+                for (i in 0 until 6) Text(EpgClock.hm(windowStart + i * SLOT_MS), color = Ux.Text3, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 22.spx, modifier = Modifier.weight(1f), maxLines = 1)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp1()).background(Ux.Surface2))
+
+        if (channels.itemCount == 0) {
+            // Jour à venir sans aucun programme : ce n'est pas un chargement en cours (le guide n'est publié que sur
+            // quelques dizaines d'heures) ; « se charge encore » faisait attendre pour rien.
+            Text(if (day > 0) D.guideNoDataYet else D.guideNoData, color = Ux.Text3, fontFamily = Manrope, fontSize = 24.spx, lineHeight = 33.spx, maxLines = 3)
+            return@Column
+        }
+
+        val state = rememberLazyListState()
+        LaunchedEffect(state, channels) {
+            // Identifiants visibles (peek en O(1), pas de copie de toute la liste ; suit aussi l'arrivée des données).
+            snapshotFlow { state.layoutInfo.visibleItemsInfo.mapNotNull { if (it.index < channels.itemCount) channels.peek(it.index)?.id else null } }
+                .distinctUntilChanged().collect { vm.setVisible(it) }
+        }
+        val first = remember { FocusRequester() }
+        var firstFocused by remember { mutableStateOf(false) }
+        RequestInitialFocus(first, hasFocus = { firstFocused }, key = programmes.isNotEmpty())
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().weight(1f).onFocusChanged { inGrid = it.hasFocus }
+                // Entrée (↓ depuis les jours) : sur la première ligne, au programme en cours, et non sur la case qui se trouve
+                // sous l'onglet (TimeShift 01, à droite). Sortie par → interdite : au bord droit, la fenêtre défile de
+                // 90 min (onPreviewKeyEvent) au lieu de sauter sur l'onglet « Samedi ».
+                .focusProperties {
+                    enter = { first }
+                    exit = { dir -> if (dir == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default }
+                }
+                .focusGroup(),
+        ) {
+            val gridW = maxWidth - 260.design
+            val safeKey0 = com.ultratv.tv.nativeapp.ui.common.rememberSafeItemKey(channels) { it.id }
+            LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(12.design), contentPadding = PaddingValues(top = 12.design, bottom = 54.design)) {
+                items(count = channels.itemCount, key = safeKey0, contentType = { "row" }) { i ->
+                    val c = channels[i]
+                    if (c != null) {
+                        GuideRow(
+                            c, programmes[c.id].orEmpty(), windowStart, gridW, D,
+                            firstModifier = if (i == 0) Modifier.focusRequester(first).onFocusChanged { firstFocused = it.isFocused } else Modifier,
+                            onSelect = { p -> actionTarget = c to p }, onRemind = { vm.addReminder(c, it); askNotifications(); Toaster.ok(D.remindSet) }, onFocusProg = { p -> focusedProg.value = c to p },
+                        )
+                    } else Spacer(Modifier.height(84.designT))
+                }
+            }
+            // Ligne « maintenant » (accent, 3 px) : seulement si l'instant courant est dans la fenêtre.
+            val nowFrac = (now - windowStart).toFloat() / GUIDE_WINDOW_MS
+            if (nowFrac in 0f..1f) Box(Modifier.offset(x = 260.design + gridW * nowFrac).width(3.design).fillMaxHeight().background(Ux.Accent))
+        }
+        FocusedInfo(focusedProg)
+    }
+    actionTarget?.let { (ch, pr) ->
+        val nowMs = System.currentTimeMillis()
+        val replayUrl = remember(ch.id, pr.id) { vm.replayUrl(ch, pr) }
+        ProgramActionsDialog(
+            channel = ch, prog = pr, state = programActionState(pr, replayUrl, nowMs), D = D, recordingRunning = recordingRunning,
+            onReplay = { actionTarget = null; replayUrl?.let { vm.armReplay(ch, pr); onPlayUrl(it, pr.title) } },
+            onWatch = {
+                actionTarget = null
+                // Lecture et enregistrement se partagent la connexion : on prévient avant de la prendre.
+                if (ConnectionPolicy.onPlayRequested(recordingRunning, vm.maxConnections(ch.providerId)) != ConnectionWarning.NONE) Toaster.show(D.recConnectionBusy)
+                onPlayChannel(ch)
+            },
+            onRemind = { actionTarget = null; vm.addReminder(ch, pr); askNotifications(); Toaster.ok(D.remindSet) },
+            onRecord = { series ->
+                actionTarget = null
+                vm.record(ch, pr, series) { r ->
+                    when (r) {
+                        is ScheduleResult.Scheduled -> Toaster.ok(D.recScheduled(r.count))
+                        ScheduleResult.NoSpace -> Toaster.err(D.recNoSpace)
+                        ScheduleResult.NothingToSchedule -> Toaster.show(D.recNothing)
+                    }
+                }
+            },
+            onDismiss = { actionTarget = null },
+        )
+    }
+}
+
+/** Panneau d'information du programme focalisé (les cellules courtes n'affichent pas de texte). */
+@Composable
+private fun FocusedInfo(s: androidx.compose.runtime.State<Pair<ChannelEntity, EpgEntity>?>) {
+    s.value?.let { (ch, pr) -> InfoPanel(ch, pr) }
+}
+
+@Composable
+private fun InfoPanel(ch: ChannelEntity, p: EpgEntity) {
+    Row(Modifier.fillMaxWidth().height(120.design).clip(RoundedCornerShape(20.design)).background(Ux.SurfaceDeep).padding(horizontal = 28.design), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.design)) {
+        LogoBox(ch.logo, ch.title, Modifier.width(84.design).height(56.design), radius = 10, pad = 6)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.design)) {
+            Text(p.title, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 28.spx, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${ch.title} · ${EpgClock.range(p.startMs, p.endMs)}", color = Ux.Text3, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            p.description?.takeIf { it.isNotBlank() }?.let { Text(it, color = Ux.Text2, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+}
+
+private fun Int.dp1() = androidx.compose.ui.unit.Dp(0.5f)
+
+private fun dayName(D: com.ultratv.tv.nativeapp.i18n.DesignStrings, offset: Int): String = when (offset) {
+    -1 -> D.yesterday
+    0 -> D.today
+    1 -> D.tomorrow
+    else -> SimpleDateFormat("EEEE", D.locale).format(Date(System.currentTimeMillis() + offset * 86_400_000L)).replaceFirstChar { it.uppercase() }
+}
+
+@Composable
+private fun DayChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(onClick = onClick, shape = RoundedCornerShape(28.design), bg = if (selected) Ux.Cta else Ux.Surface, modifier = Modifier.height(56.designT)) { f ->
+        Box(Modifier.padding(horizontal = 28.design).height(56.designT), contentAlignment = Alignment.Center) {
+            Text(label, color = if (f || selected) Ux.TextOnLight else Ux.Text2, fontFamily = Manrope, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, fontSize = 22.spx, maxLines = 1)
+        }
+    }
+}
+
+/** Ligne de 84 px : colonne chaîne (logo fixe + nom) puis programmes positionnés par l'heure, 8 px d'écart. */
+@Composable
+private fun GuideRow(
+    c: ChannelEntity, progs: List<EpgEntity>, windowStart: Long, gridW: Dp, D: com.ultratv.tv.nativeapp.i18n.DesignStrings,
+    firstModifier: Modifier, onSelect: (EpgEntity) -> Unit, onRemind: (EpgEntity) -> Unit, onFocusProg: (EpgEntity) -> Unit,
+) {
+    val nowMs = System.currentTimeMillis()
+    Row(Modifier.fillMaxWidth().height(84.designT)) {
+        Row(Modifier.width(260.design).fillMaxHeight().padding(end = 16.design), verticalAlignment = Alignment.CenterVertically) {
+            LogoBox(c.logo, c.title, Modifier.width(64.design).height(40.design), radius = 8, pad = 4)
+            Spacer(Modifier.width(14.design))
+            Text(c.title, color = Ux.Text, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 24.spx, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            // Variantes de qualité (« 13EME RUE » HD / SD) : un badge les distingue.
+            val q = remember(c.id) { com.ultratv.tv.nativeapp.data.repo.TitleCleaner.clean(c.name, live = true).quality }
+            if (q != null) { Spacer(Modifier.width(8.design)); Text(q, color = Ux.Text, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(6.design)).background(Ux.Surface2).padding(horizontal = 7.design, vertical = 2.design)) }
+        }
+        // Cases calculées une fois par (programmes, fenêtre), pas à chaque recomposition de la ligne.
+        val slots = remember(progs, windowStart) { progs.map { slotFor(it.startMs, it.endMs, windowStart) } }
+        Box(Modifier.width(gridW).fillMaxHeight()) {
+            progs.forEachIndexed { idx, p ->
+                val slot = slots[idx] ?: return@forEachIndexed
+                val isNow = p.startMs <= nowMs && p.endMs > nowMs
+                val w = (gridW * slot.widthFrac - 8.design).coerceAtLeast(24.design)
+                FocusSurface(
+                    onClick = { onSelect(p) },
+                    onLongClick = { if (p.startMs > nowMs) onRemind(p) },
+                    shape = RoundedCornerShape(14.design),
+                    bg = if (isNow) Ux.Surface2 else Ux.SurfaceDeep,
+                    ringWidth = 5.design, focusedScale = 1.03f,
+                    modifier = Modifier.offset(x = gridW * slot.startFrac).width(w).fillMaxHeight()
+                        .then(if (idx == 0 || isNow) firstModifier.takeIf { idx == 0 } ?: Modifier else Modifier),
+                ) { f ->
+                    val wPx = (w.value * 2).toInt()      // largeur en px de maquette
+                    if (f) LaunchedEffect(p.id) { onFocusProg(p) }
+                    // Sous ~90 px : fond seul (le titre apparaît dans le panneau du bas). Entre 90 et 200 px : titre seul.
+                    if (wPx >= 90) Column(Modifier.fillMaxSize().clip(RoundedCornerShape(14.design)).padding(horizontal = if (wPx < 200) 10.design else 18.design, vertical = 12.design), verticalArrangement = Arrangement.spacedBy(4.design, Alignment.CenterVertically)) {
+                        // softWrap = false : un titre trop long sur une ligne coupée, sans quoi la cellule repoussait l'horaire hors du cadre.
+                        Text(p.title, color = if (f) Ux.TextOnLight else if (isNow) Ux.Text else Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip)
+                        // Programme passé encore rejouable : badge « Replay » (la lecture passe par « Revoir »).
+                        if (wPx >= 200 && p.endMs <= nowMs && ReplayUrls.availability(c, p, nowMs) == ReplayAvailability.AVAILABLE)
+                            Text(D.replayTag, color = if (f) Ux.TextOnLight else Ux.Text, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 22.spx, maxLines = 1, modifier = Modifier.clip(RoundedCornerShape(6.design)).background(if (f) Ux.OnFocus2.copy(alpha = 0.25f) else Ux.Surface2).padding(horizontal = 8.design, vertical = 2.design))
+                        if (wPx >= 200) Text("${EpgClock.range(p.startMs, p.endMs)}", color = if (f) Ux.OnFocus2 else Ux.Text3, fontFamily = Manrope, fontSize = 22.spx, maxLines = 1, overflow = TextOverflow.Clip)
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// ───────────────────────── Tactile ─────────────────────────
+
+private val TOUCH_SLOT_W = 128.dp
+private val TOUCH_CHAN_W = 116.dp
+private val TOUCH_ROW_H = 64.dp
+
+/**
+ * Guide tactile : un seul plan défilant dans les deux sens au doigt (horizontal : le temps ; vertical : les chaînes).
+ * La colonne des chaînes et la ligne des heures restent épinglées ; un appui sur un programme ouvre ses actions
+ * (GuideActions), un appui long sur un programme à venir pose un rappel.
+ */
+@Composable
+private fun GuideTouch(
+    channels: androidx.paging.compose.LazyPagingItems<ChannelEntity>, programmes: Map<Long, List<EpgEntity>>, windowStart: Long, day: Int,
+    D: com.ultratv.tv.nativeapp.i18n.DesignStrings, vm: GuideGridViewModel, onDay: (Int) -> Unit, onShift: (Int) -> Unit,
+    onSelect: (ChannelEntity, EpgEntity) -> Unit, onRemind: (ChannelEntity, EpgEntity) -> Unit,
+) {
+    val M = com.ultratv.tv.nativeapp.ui.mobile.LocalMobileStrings.current
+    val hScroll = androidx.compose.foundation.rememberScrollState()
+    val gridW = TOUCH_SLOT_W * 6
+    val now = remember(windowStart) { System.currentTimeMillis() }
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(D.tvGuide, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 28.sp, maxLines = 1)
+                Text("${dayName(D, day)} · ${EpgClock.hm(windowStart)} – ${EpgClock.hm(windowStart + GUIDE_WINDOW_MS)}", color = Ux.Text3, fontFamily = Manrope, fontSize = 12.sp, maxLines = 1)
+            }
+            com.ultratv.tv.nativeapp.ui.mobile.SearchAction()
+            com.ultratv.tv.nativeapp.ui.mobile.IconCircle(com.ultratv.tv.nativeapp.ui.design.Icons.Chevron, D.today.let { "−3 h" }, Ux.Surface, Ux.Text, { onShift(-1) })
+            com.ultratv.tv.nativeapp.ui.mobile.IconCircle("M9 6l6 6-6 6", "+3 h", Ux.Surface, Ux.Text, { onShift(1) })
+        }
+        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 20.dp)) {
+            items((-1..2).toList()) { d ->
+                val sel = d == day
+                FocusSurface(onClick = { onDay(d) }, shape = RoundedCornerShape(20.dp), bg = if (sel) Ux.Cta else Ux.Surface, modifier = Modifier.height(40.dp)) { _ ->
+                    Box(Modifier.height(40.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+                        Text(dayName(D, d), color = if (sel) Ux.TextOnLight else Ux.Text2, fontFamily = Manrope, fontWeight = if (sel) FontWeight.Bold else FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+        if (channels.itemCount == 0) {
+            Text(D.guideNoData, color = Ux.Text3, fontFamily = Manrope, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(horizontal = 20.dp))
+            return@Column
+        }
+        val state = rememberLazyListState()
+        LaunchedEffect(state, channels) {
+            // Identifiants visibles (peek en O(1), pas de copie de toute la liste ; suit aussi l'arrivée des données).
+            snapshotFlow { state.layoutInfo.visibleItemsInfo.mapNotNull { if (it.index < channels.itemCount) channels.peek(it.index)?.id else null } }
+                .distinctUntilChanged().collect { vm.setVisible(it) }
+        }
+        com.ultratv.tv.nativeapp.ui.mobile.TouchRefresh(Modifier.weight(1f).fillMaxWidth()) {
+            Box(Modifier.fillMaxSize().horizontalScroll(hScroll)) {
+                Column(Modifier.width(TOUCH_CHAN_W + gridW)) {
+                    Row(Modifier.height(28.dp)) {
+                        Spacer(Modifier.width(TOUCH_CHAN_W))
+                        for (i in 0 until 6) Text(EpgClock.hm(windowStart + i * SLOT_MS), color = Ux.Text3, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, modifier = Modifier.width(TOUCH_SLOT_W), maxLines = 1)
+                    }
+                    val safeKey1 = com.ultratv.tv.nativeapp.ui.common.rememberSafeItemKey(channels) { it.id }
+                    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp), modifier = Modifier.weight(1f)) {
+                        items(count = channels.itemCount, key = safeKey1, contentType = { "row" }) { i ->
+                            val c = channels[i]
+                            if (c != null) TouchGuideRow(c, programmes[c.id].orEmpty(), windowStart, hScroll.value, onSelect = { p -> onSelect(c, p) }, onRemind = { p -> onRemind(c, p) })
+                            else Spacer(Modifier.height(TOUCH_ROW_H))
+                        }
+                    }
+                }
+                val nowFrac = (now - windowStart).toFloat() / GUIDE_WINDOW_MS
+                if (nowFrac in 0f..1f) Box(Modifier.offset(x = TOUCH_CHAN_W + gridW * nowFrac).width(2.dp).fillMaxHeight().background(Ux.Accent))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TouchGuideRow(c: ChannelEntity, progs: List<EpgEntity>, windowStart: Long, scrollPx: Int, onSelect: (EpgEntity) -> Unit, onRemind: (EpgEntity) -> Unit) {
+    val nowMs = System.currentTimeMillis()
+    val gridW = TOUCH_SLOT_W * 6
+    Box(Modifier.width(TOUCH_CHAN_W + gridW).height(TOUCH_ROW_H)) {
+        Box(Modifier.offset(x = TOUCH_CHAN_W).width(gridW).fillMaxHeight()) {
+            progs.forEach { p ->
+                val slot = slotFor(p.startMs, p.endMs, windowStart) ?: return@forEach
+                val isNow = p.startMs <= nowMs && p.endMs > nowMs
+                val w = (gridW * slot.widthFrac - 6.dp).coerceAtLeast(20.dp)
+                FocusSurface(
+                    onClick = { onSelect(p) }, onLongClick = { if (p.startMs > nowMs) onRemind(p) }, shape = RoundedCornerShape(12.dp),
+                    bg = if (isNow) Ux.Surface2 else Ux.SurfaceDeep,
+                    modifier = Modifier.offset(x = gridW * slot.startFrac).width(w).fillMaxHeight().semantics { contentDescription = "${p.title}, ${EpgClock.hm(p.startMs)} – ${EpgClock.hm(p.endMs)}" },
+                ) { _ ->
+                    if (w >= 56.dp) Column(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+                        Text(p.title, color = if (isNow) Ux.Text else Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (w >= 110.dp) Text("${EpgClock.hm(p.startMs)} – ${EpgClock.hm(p.endMs)}", color = Ux.Text3, fontFamily = Manrope, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Clip)
+                    }
+                }
+            }
+        }
+        // Colonne chaîne épinglée à gauche (suit le défilement horizontal).
+        Row(
+            Modifier.offset { androidx.compose.ui.unit.IntOffset(scrollPx, 0) }.width(TOUCH_CHAN_W).fillMaxHeight().background(Ux.Bg).padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            LogoBox(c.logo, c.title, Modifier.width(40.dp).height(28.dp), radius = 12, pad = 3)
+            Text(c.title, color = Ux.Text, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        }
+    }
+}

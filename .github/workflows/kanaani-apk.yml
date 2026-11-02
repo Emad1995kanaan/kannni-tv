@@ -1,0 +1,66 @@
+name: Build Kanaani APK
+
+# كل push على main بيبني APK جديد. وبتقدر تشغّله يدوي من تبويب Actions → Run workflow.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: kanaani-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build release APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android-native
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # ubuntu-latest فيه Android SDK جاهز؛ Gradle بينزّل الناقص لحاله.
+      - name: Setup Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v6
+
+      # مفتاح التوقيع الثابت (Secrets). بدونه بيتوقّع بمفتاح مؤقت وما بينفع كتحديث.
+      - name: Restore signing key
+        env:
+          KS_B64: ${{ secrets.BRAND_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/brand.jks"
+            echo "BRAND_KEYSTORE=$RUNNER_TEMP/brand.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::BRAND_KEYSTORE_B64 secret is missing — APK signed with a temporary debug key."
+          fi
+
+      - name: Build
+        env:
+          BRAND_KEYSTORE_PASSWORD: ${{ secrets.BRAND_KEYSTORE_PASSWORD }}
+          BRAND_KEY_ALIAS: ${{ secrets.BRAND_KEY_ALIAS }}
+          BRAND_KEY_PASSWORD: ${{ secrets.BRAND_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --console=plain --stacktrace
+          mkdir -p ../out
+          VERSION=$(cat ../VERSION)
+          for f in app/build/outputs/apk/release/*.apk; do
+            abi=$(basename "$f" .apk | sed -E 's/^app-//; s/-release.*//')
+            cp "$f" "../out/Kanaani-$VERSION-$abi.apk"
+          done
+          ls -la ../out
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kanaani-apk
+          path: out/*.apk
+          retention-days: 30

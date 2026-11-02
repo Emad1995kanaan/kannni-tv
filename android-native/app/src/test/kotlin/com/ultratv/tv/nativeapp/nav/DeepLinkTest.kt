@@ -1,0 +1,42 @@
+package com.ultratv.tv.nativeapp.nav
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class DeepLinkTest {
+    @Test fun direct_allerRetour_avecCaracteresSpeciaux() {
+        val rid = "ch 1/é+x"
+        assertEquals(DeepLink.PlayLive(7, rid), DeepLink.parse(DeepLink.live(7, rid)))
+    }
+
+    @Test fun film_et_episode_sont_distingues() {
+        assertEquals(DeepLink.PlayMovie(1, "42"), DeepLink.parse(DeepLink.movie(1, "42")))
+        assertEquals(DeepLink.PlayEpisode(1, "9"), DeepLink.parse(DeepLink.episode(1, "9")))
+    }
+
+    @Test fun fiche_film_et_serie_sont_distinguees_de_la_lecture() {
+        assertEquals(DeepLink.OpenMovie(2, "a/b 1"), DeepLink.parse(DeepLink.movieDetail(2, "a/b 1")))
+        assertEquals(DeepLink.OpenSeries(2, "7"), DeepLink.parse(DeepLink.series(2, "7")))
+        assertNull(DeepLink.parse("ultratv://moviedetail/x/1"))
+    }
+
+    @Test fun recherche_decode_la_requete() {
+        assertEquals(DeepLink.Search("le journal & co"), DeepLink.parse(DeepLink.search("le journal & co")))
+    }
+
+    @Test fun lien_invalide_ou_etranger_renvoie_null() {
+        assertNull(DeepLink.parse(null))
+        assertNull(DeepLink.parse("https://exemple.test/live/1/2"))
+        assertNull(DeepLink.parse("ultratv://live/abc/2"))
+        assertNull(DeepLink.parse("ultratv://live/1"))
+        assertNull(DeepLink.parse("ultratv://search?q="))
+        assertNull(DeepLink.parse("ultratv://inconnu/1/2"))
+    }
+}
+
+class DeepLinkSeriesTest {
+    @org.junit.Test fun serie_aller_retour() {
+        org.junit.Assert.assertEquals(DeepLink.OpenSeries(3, "s/1"), DeepLink.parse(DeepLink.series(3, "s/1")))
+    }
+}

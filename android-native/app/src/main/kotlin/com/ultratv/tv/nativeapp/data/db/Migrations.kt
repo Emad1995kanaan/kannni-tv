@@ -1,0 +1,216 @@
+package com.ultratv.tv.nativeapp.data.db
+
+import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+
+/**
+ * 10 → 11 : synchro incrémentale par partie (horodatages par fournisseur), clé de tri indexée
+ * (pagination servie par l'index) et recherche plein texte FTS4. Aucune donnée n'est perdue :
+ * favoris, historique et catalogue existants sont conservés ; `sortKey` est recalculé en SQL
+ * (minuscules ASCII) puis affiné à la prochaine synchro.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `provider` ADD COLUMN `categoryFilter` INTEGER NOT NULL DEFAULT -1")
+        db.execSQL("ALTER TABLE `category` ADD COLUMN `enabled` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE `category` ADD COLUMN `position` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `category` ADD COLUMN `lang` TEXT NOT NULL DEFAULT ''")
+        for (col in listOf("lastLiveSyncAt", "lastVodSyncAt", "lastSeriesSyncAt", "lastEpgSyncAt")) {
+            db.execSQL("ALTER TABLE `provider` ADD COLUMN `$col` INTEGER NOT NULL DEFAULT 0")
+        }
+        db.execSQL("ALTER TABLE `episode` ADD COLUMN `image` TEXT")
+        for (t in listOf("channel", "movie", "series")) {
+            db.execSQL("ALTER TABLE `$t` ADD COLUMN `sortKey` TEXT NOT NULL DEFAULT ''")
+            if (t == "channel") {
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `num` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `seq` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `junk` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `isSeparator` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `country` TEXT")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `quality` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `channel` ADD COLUMN `flags` INTEGER NOT NULL DEFAULT 0")
+            }
+            db.execSQL("ALTER TABLE `$t` ADD COLUMN `lang` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE `$t` ADD COLUMN `title` TEXT NOT NULL DEFAULT ''")
+            db.execSQL("UPDATE `$t` SET `title` = `name`, `sortKey` = lower(`name`)")
+            if (t != "channel") {
+                db.execSQL("ALTER TABLE `$t` ADD COLUMN `backdrop` TEXT")
+                db.execSQL("ALTER TABLE `$t` ADD COLUMN `genre` TEXT")
+                db.execSQL("ALTER TABLE `$t` ADD COLUMN `cast` TEXT")
+            }
+            if (t == "movie") db.execSQL("ALTER TABLE `movie` ADD COLUMN `duration` TEXT")
+            db.execSQL("DROP INDEX IF EXISTS `index_${t}_providerId`")
+            db.execSQL("DROP INDEX IF EXISTS `index_${t}_providerId_categoryId`")
+            if (t == "channel") {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_num_sortKey` ON `channel` (`providerId`, `num`, `sortKey`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_categoryId_num_sortKey` ON `channel` (`providerId`, `categoryId`, `num`, `sortKey`)")
+            } else {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_sortKey` ON `$t` (`providerId`, `sortKey`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_categoryId_sortKey` ON `$t` (`providerId`, `categoryId`, `sortKey`)")
+            }
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS `${t}_fts` USING FTS4(`name` TEXT NOT NULL, tokenize=unicode61, content=`$t`)")
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_${t}_fts_BEFORE_UPDATE BEFORE UPDATE ON `$t` BEGIN DELETE FROM `${t}_fts` WHERE `docid`=OLD.`rowid`; END")
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_${t}_fts_BEFORE_DELETE BEFORE DELETE ON `$t` BEGIN DELETE FROM `${t}_fts` WHERE `docid`=OLD.`rowid`; END")
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_${t}_fts_AFTER_UPDATE AFTER UPDATE ON `$t` BEGIN INSERT INTO `${t}_fts`(`docid`, `name`) VALUES (NEW.`rowid`, NEW.`name`); END")
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_${t}_fts_AFTER_INSERT AFTER INSERT ON `$t` BEGIN INSERT INTO `${t}_fts`(`docid`, `name`) VALUES (NEW.`rowid`, NEW.`name`); END")
+            db.execSQL("INSERT INTO `${t}_fts`(`${t}_fts`) VALUES('rebuild')")
+        }
+    }
+}
+
+/** 11 → 12 : cache des détails de film (get_vod_info) et durée des épisodes. Aucune donnée existante n'est touchée. */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `episode` ADD COLUMN `duration` TEXT")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `vod_info` (`providerId` INTEGER NOT NULL, `remoteId` TEXT NOT NULL, `plot` TEXT, `cast` TEXT, `director` TEXT, " +
+                "`genre` TEXT, `duration` TEXT, `releaseDate` TEXT, `rating` REAL, `backdrop` TEXT, `trailer` TEXT, `tmdbId` TEXT, `country` TEXT, " +
+                "`originalName` TEXT, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`providerId`, `remoteId`))",
+        )
+    }
+}
+
+/**
+ * 12 → 13 : enregistrements programmés depuis le guide (fenêtre voulue + nom de chaîne).
+ * Migration DÉDIÉE au lot B1 ; aucune donnée existante n'est touchée.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `recording` ADD COLUMN `scheduledStartMs` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `recording` ADD COLUMN `scheduledEndMs` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE `recording` ADD COLUMN `channelName` TEXT")
+    }
+}
+
+/**
+ * 13 → 14 : cache des fiches TMDB (lot B1). Table nouvelle, aucune donnée existante n'est touchée.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `tmdb_info` (`kind` TEXT NOT NULL, `providerId` INTEGER NOT NULL, `remoteId` TEXT NOT NULL, " +
+                "`tmdbId` INTEGER, `overview` TEXT, `posterPath` TEXT, `backdropPath` TEXT, `rating` REAL, `cast` TEXT, `trailerKey` TEXT, " +
+                "`originalLanguage` TEXT, `lang` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`kind`, `providerId`, `remoteId`))",
+        )
+    }
+}
+
+/**
+ * 14 → 15 : PROFILS (suppose les DEUX migrations de B1 en amont : 12 → 13 recording, 13 → 14 tmdb_info). Crée `profile` (le profil existant devient « Principal », id 1), les préférences et catégories
+ * masquées par profil, et rattache favoris et historique au profil 1 (clé primaire élargie à `profileId`).
+ * Aucune donnée n'est perdue. Sources, catalogue et EPG restent globaux.
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `profile` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `color` INTEGER NOT NULL, `initial` TEXT NOT NULL, `isKids` INTEGER NOT NULL, `pinHash` TEXT, `createdAt` INTEGER NOT NULL)")
+        db.execSQL(DEFAULT_PROFILE_SEED_SQL)
+        db.execSQL("CREATE TABLE IF NOT EXISTS `profile_pref` (`profileId` INTEGER NOT NULL, `key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`profileId`, `key`))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `profile_hidden_category` (`profileId` INTEGER NOT NULL, `categoryKey` TEXT NOT NULL, PRIMARY KEY(`profileId`, `categoryKey`))")
+
+        db.execSQL("ALTER TABLE `favorite` RENAME TO `favorite_old`")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `favorite` (`providerId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `remoteId` TEXT NOT NULL, `profileId` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`profileId`, `providerId`, `kind`, `remoteId`))")
+        db.execSQL("INSERT INTO `favorite` (`providerId`, `kind`, `remoteId`, `profileId`) SELECT `providerId`, `kind`, `remoteId`, 1 FROM `favorite_old`")
+        db.execSQL("DROP TABLE `favorite_old`")
+
+        db.execSQL("ALTER TABLE `watch_history` RENAME TO `watch_history_old`")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `watch_history` (`providerId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `remoteId` TEXT NOT NULL, `title` TEXT NOT NULL, `poster` TEXT, `streamUrl` TEXT NOT NULL, `positionMs` INTEGER NOT NULL, `durationMs` INTEGER NOT NULL, `watchedAt` INTEGER NOT NULL, `parentRemoteId` TEXT, `profileId` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`profileId`, `providerId`, `kind`, `remoteId`))")
+        db.execSQL("INSERT INTO `watch_history` (`providerId`, `kind`, `remoteId`, `title`, `poster`, `streamUrl`, `positionMs`, `durationMs`, `watchedAt`, `parentRemoteId`, `profileId`) SELECT `providerId`, `kind`, `remoteId`, `title`, `poster`, `streamUrl`, `positionMs`, `durationMs`, `watchedAt`, `parentRemoteId`, 1 FROM `watch_history_old`")
+        db.execSQL("DROP TABLE `watch_history_old`")
+    }
+}
+
+/** Chaîne complète 10 → version courante : source UNIQUE pour l'application et pour les tests de migration. */
+/**
+ * 15 → 16 (performances) : index des films / séries alignés sur leur tri réel (id), guide sans doublons
+ * (unique chaîne+début, doublons existants supprimés) et purgeable (index endMs), programmes passés supprimés.
+ */
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (t in listOf("movie", "series")) {
+            db.execSQL("DROP INDEX IF EXISTS `index_${t}_providerId_sortKey`")
+            db.execSQL("DROP INDEX IF EXISTS `index_${t}_providerId_categoryId_sortKey`")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId` ON `$t` (`providerId`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_categoryId` ON `$t` (`providerId`, `categoryId`)")
+        }
+        db.execSQL("DELETE FROM epg WHERE endMs < (CAST(strftime('%s','now') AS INTEGER) * 1000 - 3 * 3600000)")
+        db.execSQL("DELETE FROM epg WHERE id NOT IN (SELECT MAX(id) FROM epg GROUP BY channelId, startMs)")
+        db.execSQL("DROP INDEX IF EXISTS `index_epg_channelId`")
+        db.execSQL("DROP INDEX IF EXISTS `index_epg_channelId_startMs`")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_epg_channelId_startMs` ON `epg` (`channelId`, `startMs`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_epg_endMs` ON `epg` (`endMs`)")
+    }
+}
+
+/**
+ * 16 → 17 (performances) : addedKey (tri « derniers ajoutés » par index), index note / langue, index des chaînes
+ * alignés sur leur tri (num, id), index d'épisode redondant retiré.
+ */
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (t in listOf("movie", "series")) {
+            db.execSQL("ALTER TABLE `$t` ADD COLUMN `addedKey` INTEGER NOT NULL DEFAULT 0")
+            // Même règle que String.toLongOrNull() : uniquement des chiffres, sinon 0.
+            db.execSQL("UPDATE `$t` SET `addedKey` = CAST(`remoteId` AS INTEGER) WHERE `remoteId` != '' AND `remoteId` NOT GLOB '*[^0-9]*'")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_addedKey` ON `$t` (`providerId`, `addedKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_categoryId_addedKey` ON `$t` (`providerId`, `categoryId`, `addedKey`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_rating` ON `$t` (`providerId`, `rating`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_${t}_providerId_lang` ON `$t` (`providerId`, `lang`)")
+        }
+        db.execSQL("DROP INDEX IF EXISTS `index_channel_providerId_num_sortKey`")
+        db.execSQL("DROP INDEX IF EXISTS `index_channel_providerId_categoryId_num_sortKey`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_num` ON `channel` (`providerId`, `num`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_categoryId_num` ON `channel` (`providerId`, `categoryId`, `num`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_lang` ON `channel` (`providerId`, `lang`)")
+        db.execSQL("DROP INDEX IF EXISTS `index_episode_seriesId`")
+    }
+}
+
+/**
+ * 17 → 18 (performances du Direct) : `channel.catRank`, rang précalculé de la catégorie de chaque chaîne dans l'ordre
+ * d'affichage (voir LiveOrder), et l'index (providerId, junk, isSeparator, catRank, num) qui sert la liste « Tout » et le
+ * zapping sans jointure ni tri. SCHÉMA SEULEMENT : les 55 000 lignes existantes gardent 0 et sont remplies en tâche de
+ * fond par lots (LiveOrderBackfill) — une réécriture synchrone ici figerait l'eMMC d'une box plusieurs secondes au premier
+ * lancement (déclencheurs FTS compris) et déclencherait le chien de garde ANR. Tant qu'une source a des lignes à 0, le
+ * Direct garde l'ancienne requête jointe (ordre identique, juste plus lente).
+ */
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `channel` ADD COLUMN `catRank` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_channel_providerId_junk_isSeparator_catRank_num` ON `channel` (`providerId`, `junk`, `isSeparator`, `catRank`, `num`)")
+    }
+}
+
+/**
+ * 18 → 19 (téléchargements hors ligne) : table `download` seule, aucune donnée existante touchée. Pas de clé étrangère
+ * vers `provider` (son upsert est un REPLACE qui déclencherait la cascade) : la purge suit la liste des sources
+ * (DownloadRepository.purgeOrphans). Aucune URL de flux n'y est stockée, seulement son empreinte.
+ */
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `download` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `providerId` INTEGER NOT NULL, " +
+                "`kind` TEXT NOT NULL, `remoteId` TEXT NOT NULL, `parentRemoteId` TEXT, `title` TEXT NOT NULL, `poster` TEXT, `season` INTEGER, " +
+                "`episode` INTEGER, `urlHash` TEXT NOT NULL, `filePath` TEXT NOT NULL, `totalBytes` INTEGER NOT NULL, `doneBytes` INTEGER NOT NULL, " +
+                "`state` TEXT NOT NULL, `error` TEXT, `createdAt` INTEGER NOT NULL)",
+        )
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_download_providerId_kind_remoteId` ON `download` (`providerId`, `kind`, `remoteId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_download_state` ON `download` (`state`)")
+    }
+}
+
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+
+/** Profil « Principal » (id 1) : posé par la migration 14 → 15 ET par [DefaultProfileCallback] sur une installation neuve. */
+const val DEFAULT_PROFILE_SEED_SQL =
+    "INSERT INTO `profile` (`id`, `name`, `color`, `initial`, `isKids`, `pinHash`, `createdAt`) VALUES (1, 'Principal', ${0xFF3B82F6.toInt()}, 'P', 0, NULL, CAST(strftime('%s','now') AS INTEGER) * 1000)"
+
+/**
+ * Installation neuve : Room crée le schéma 15 SANS passer par les migrations, donc sans profil.
+ * Le flux « Qui regarde ? » restait alors à `null` et l'application affichait un écran noir à jamais.
+ */
+class DefaultProfileCallback : RoomDatabase.Callback() {
+    override fun onCreate(db: SupportSQLiteDatabase) {
+        db.execSQL(DEFAULT_PROFILE_SEED_SQL)
+    }
+}

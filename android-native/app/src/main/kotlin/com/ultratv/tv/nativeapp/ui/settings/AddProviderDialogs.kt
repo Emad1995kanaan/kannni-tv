@@ -1,0 +1,514 @@
+package com.ultratv.tv.nativeapp.ui.settings
+
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.tv.material3.Text
+import com.ultratv.tv.nativeapp.i18n.LocalDs
+import com.ultratv.tv.nativeapp.i18n.LocalStrings
+import com.ultratv.tv.nativeapp.i18n.fieldMac
+import com.ultratv.tv.nativeapp.i18n.fieldPortalLogin
+import com.ultratv.tv.nativeapp.i18n.fieldPortalPassword
+import com.ultratv.tv.nativeapp.i18n.fieldPortalUrl
+import com.ultratv.tv.nativeapp.i18n.formSubStalker
+import com.ultratv.tv.nativeapp.i18n.kindStalker
+import com.ultratv.tv.nativeapp.i18n.macHint
+import com.ultratv.tv.nativeapp.i18n.stalkerChecking
+import com.ultratv.tv.nativeapp.ui.design.DIcon
+import com.ultratv.tv.nativeapp.ui.design.Icons
+import com.ultratv.tv.nativeapp.ui.common.ModalFocusScope
+import com.ultratv.tv.nativeapp.ui.common.design
+import com.ultratv.tv.nativeapp.ui.common.leaveOnVerticalDpad
+import com.ultratv.tv.nativeapp.ui.common.modalFocusMemory
+import com.ultratv.tv.nativeapp.ui.design.FocusSurface
+import com.ultratv.tv.nativeapp.ui.design.Manrope
+import com.ultratv.tv.nativeapp.ui.design.Sora
+import com.ultratv.tv.nativeapp.ui.design.Ux
+import com.ultratv.tv.nativeapp.ui.design.spx
+
+/** Adresse http(s) exploitable : schéma http/https et un hôte non vide. */
+fun isValidHttpUrl(raw: String): Boolean {
+    val s = raw.trim()
+    if (!(s.startsWith("http://", ignoreCase = true) || s.startsWith("https://", ignoreCase = true))) return false
+    val host = runCatching { java.net.URI(s).host }.getOrNull()
+    return !host.isNullOrBlank()
+}
+
+/**
+ * Formulaire modal (maquette AjoutSource) : 1000 px, en-tête icône + titre + sous-titre, champs de 72 px,
+ * « Annuler » / « Ajouter et synchroniser » à droite, aide télécommande en pied.
+ * Les champs de saisie n'apparaissent que dans ces dialogues : défiler les Réglages au D-pad
+ * ne tombe jamais sur un champ qui ferait surgir le clavier.
+ */
+@Composable
+fun AddProviderDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onSubmit: () -> Unit,
+    canSubmit: Boolean,
+    icon: String = Icons.Monitor,
+    subtitle: String? = null,
+    submitLabel: String? = null,
+    /** Retour télécommande (par défaut : comme « Annuler »). */
+    onBack: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    val S = LocalStrings.current
+    val D = LocalDs.current
+    val touch = com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current
+    val submitFocus = remember { FocusRequester() }
+    val attempted = remember { mutableStateOf(false) }
+    val submit = { if (canSubmit) onSubmit() else attempted.value = true }
+    ModalFocusScope(onBack = onBack ?: onDismiss, modifier = Modifier.background(Ux.Scrim)) {
+        if (touch) {
+            // Tactile : en-tête et champs DÉFILENT, les boutons restent épinglés en bas, au-dessus du clavier système (imePadding via les insets).
+            CompositionLocalProvider(LocalSubmitAttempted provides attempted, LocalFormSubmit provides submit) {
+            Column(
+                modifier = Modifier
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(vertical = 8.dp)
+                    .fillMaxWidth(0.94f).widthIn(max = 560.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Ux.SurfaceDeep),
+            ) {
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Ux.Accent), contentAlignment = Alignment.Center) { DIcon(icon, 22.dp, Ux.White, strokeWidth = 2f) }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(title, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Ux.Text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (subtitle != null) Text(subtitle, fontFamily = Manrope, fontSize = 13.sp, color = Ux.Text3, maxLines = 2)
+                        }
+                    }
+                    content()
+                    Spacer(Modifier.height(4.dp))
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FocusSurface(onClick = onDismiss, shape = RoundedCornerShape(24.dp), bg = Ux.Surface2, modifier = Modifier.height(48.dp).testTag("dialog-cancel")) { _ ->
+                        Box(Modifier.height(48.dp).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) { Text(S.cancel, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = Ux.Text) }
+                    }
+                    FocusSurface(onClick = submit, shape = RoundedCornerShape(24.dp), bg = if (canSubmit) Ux.Cta else Ux.Surface, modifier = Modifier.height(48.dp).weight(1f, fill = false).testTag("dialog-submit")) { _ ->
+                        Box(Modifier.height(48.dp).padding(horizontal = 22.dp), contentAlignment = Alignment.Center) {
+                            Text(submitLabel ?: D.addAndSync, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, color = if (canSubmit) Ux.TextOnLight else Ux.Muted)
+                        }
+                    }
+                }
+            }
+            }
+        } else {
+        // Le dialogue tient TOUJOURS dans l'écran (hauteur moins marges de sécurité) : le contenu défile,
+        // l'en-tête et les boutons restent épinglés, donc visibles et focalisables quelle que soit l'échelle de police.
+        // Clavier à l'écran : la fenêtre n'est pas redimensionnée (elle est seulement « panoramiquée »), donc le dialogue se limite
+        // lui-même à l'espace au-dessus du clavier et se cale en haut tant qu'il est visible : les boutons restent atteignables.
+        val fieldFocused = remember { mutableStateOf(false) }
+        val measured = rememberImeHeight()
+        // Clavier demandé (OK sur un champ) : certaines box (Skyworth…) n'annoncent pas la hauteur de leur clavier, la
+        // mesure reste à 0 alors qu'il couvre la moitié basse de l'écran. On estime alors 55 % de la hauteur, jusqu'à ce
+        // qu'une touche parvienne de nouveau à l'appli (clavier fermé : tant qu'il est ouvert, il reçoit les touches).
+        // Sans demande, pas d'estimation : un champ simplement focalisé n'ouvre pas le clavier sur TV.
+        val imeAskedAt = remember { mutableStateOf(0L) }
+        LaunchedEffect(imeAskedAt.value) {
+            val at = imeAskedAt.value
+            if (at > 0) while (true) {
+                kotlinx.coroutines.delay(150)
+                if (com.ultratv.tv.nativeapp.ui.common.InputClock.lastKeyMs > at) { imeAskedAt.value = 0L; break }
+            }
+        }
+        val imeHeight = if (measured > 0.dp) measured
+            else if (imeAskedAt.value > 0) (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.55f).dp
+            else 0.dp
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = if (imeHeight > 0.dp) Alignment.TopCenter else Alignment.Center) {
+            val safeV = androidx.compose.foundation.layout.PaddingValues(0.dp).let { com.ultratv.tv.nativeapp.ui.common.LocalSafeArea.current.calculateTopPadding() }
+            // Clavier affiché : il prend plus de la moitié de l'écran d'une TV. Mode COMPACT (titre + champs seulement,
+            // marges réduites) : sinon icône, sous-titre, boutons et aides écrasaient les champs (chevauchements). Les
+            // boutons reviennent dès que le clavier se ferme (Retour), « Suivant » / « OK » du clavier passent au champ suivant.
+            val compact = imeHeight > 0.dp   // clavier mesuré, ou demandé par OK sur un champ
+            val maxH = (maxHeight - safeV * 2 - imeHeight).coerceAtLeast(if (compact) 160.dp else 240.dp)
+            Box(Modifier.padding(top = if (imeHeight > 0.dp) safeV else 0.dp)) {
+            CompositionLocalProvider(LocalSubmitFocus provides submitFocus, LocalSubmitAttempted provides attempted, LocalFieldFocused provides fieldFocused, LocalImeAskedAt provides imeAskedAt) {
+                Column(
+                    modifier = Modifier
+                        .width(1000.design)
+                        .heightIn(max = maxH)
+                        .clip(RoundedCornerShape(32.design))
+                        .background(Ux.SurfaceDeep)
+                        .border(1.design, Ux.Surface2, RoundedCornerShape(32.design))
+                        .padding(horizontal = 56.design, vertical = if (compact) 20.design else 40.design),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 14.design else 24.design),
+                ) {
+                    if (compact) {
+                        Text(title, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 28.spx, color = Ux.Text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.design)) {
+                        Box(Modifier.size(64.design).clip(RoundedCornerShape(16.design)).background(Ux.Accent), contentAlignment = Alignment.Center) {
+                            DIcon(icon, 32.design, Ux.White, strokeWidth = 2f)
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.design)) {
+                            Text(title, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 40.spx, color = Ux.Text, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (subtitle != null) Text(subtitle, fontFamily = Manrope, fontSize = 22.spx, color = Ux.Text3, maxLines = 1)
+                        }
+                    }
+                    Column(
+                        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(24.design),
+                    ) { content() }
+                    if (!compact) Row(horizontalArrangement = Arrangement.spacedBy(20.design, Alignment.End), modifier = Modifier.fillMaxWidth().padding(top = 4.design)) {
+                        FocusSurface(onClick = onDismiss, shape = RoundedCornerShape(36.design), bg = Ux.Surface2, modifier = Modifier.height(72.design).testTag("dialog-cancel")) { f ->
+                            Box(Modifier.height(72.design).padding(horizontal = 36.design), contentAlignment = Alignment.Center) {
+                                Text(S.cancel, fontFamily = Manrope, fontWeight = FontWeight.SemiBold, fontSize = 24.spx, color = if (f) Ux.TextOnLight else Ux.Text)
+                            }
+                        }
+                        FocusSurface(onClick = submit, shape = RoundedCornerShape(36.design), bg = if (canSubmit) Ux.Cta else Ux.Surface, modifier = Modifier.height(72.design).focusRequester(submitFocus).testTag("dialog-submit")) { f ->
+                            Box(Modifier.height(72.design).padding(horizontal = 44.design), contentAlignment = Alignment.Center) {
+                                Text(submitLabel ?: D.addAndSync, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = 24.spx,
+                                    color = when { !canSubmit -> Ux.Muted; f || canSubmit -> Ux.TextOnLight; else -> Ux.Text })
+                            }
+                        }
+                    }
+                    if (!compact) Row(horizontalArrangement = Arrangement.spacedBy(32.design)) {
+                        Text(D.formHintFields, fontFamily = Manrope, fontSize = 22.spx, color = Ux.Text3, maxLines = 1)
+                        Text(D.formHintIme, fontFamily = Manrope, fontSize = 22.spx, color = Ux.Text3, maxLines = 1)
+                        Text(D.formHintBack, fontFamily = Manrope, fontSize = 22.spx, color = Ux.Text3, maxLines = 1)
+                    }
+                }
+            }
+            }
+        }
+        }
+    }
+}
+
+/** Hauteur du clavier à l'écran (0 s'il est masqué), lue sur les insets racine de la fenêtre. */
+@Composable
+private fun rememberImeHeight(): androidx.compose.ui.unit.Dp {
+    val view = androidx.compose.ui.platform.LocalView.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var px by remember { mutableStateOf(0) }
+    LaunchedEffect(view) {
+        while (true) {
+            val ins = androidx.core.view.ViewCompat.getRootWindowInsets(view)
+            px = if (ins?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true) ins.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom else 0
+            kotlinx.coroutines.delay(120)
+        }
+    }
+    return with(density) { px.toDp() }
+}
+
+/** Instant (uptime) où le clavier a été demandé par OK sur un champ, 0 sinon : voir l'estimation du clavier. */
+private val LocalImeAskedAt = androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Long>?> { null }
+
+/** Bouton principal du dialogue courant : cible de « ▼ » et de l'action IME « OK » sur le dernier champ. */
+private val LocalSubmitAttempted = androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Boolean>?> { null }
+private val LocalFieldFocused = androidx.compose.runtime.compositionLocalOf<androidx.compose.runtime.MutableState<Boolean>?> { null }
+private val LocalSubmitFocus = androidx.compose.runtime.compositionLocalOf<FocusRequester?> { null }
+/** Validation depuis le clavier (« OK / Terminé ») : même chemin que le bouton d'envoi. */
+val LocalFormSubmit = androidx.compose.runtime.compositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * Champ texte de formulaire. D-pad haut/bas le quittent toujours ([leaveOnVerticalDpad]) ;
+ * l'action IME « Suivant » descend au champ suivant, « OK » ([last]) descend sur « Ajouter ».
+ * [required] : « Champ requis » apparaît quand le champ est vide après l'avoir quitté.
+ */
+@Composable
+fun FormField(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    password: Boolean = false,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    placeholder: String? = null,
+    autoFocus: Boolean = false,
+    last: Boolean = false,
+    error: String? = null,
+    required: Boolean = false,
+    testTag: String? = null,
+    /** Affichage mis en forme sans toucher à la valeur (ex. « : » d'une adresse MAC, voir [MacVisualTransformation]). */
+    visual: VisualTransformation? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val focusRequester = remember { FocusRequester() }
+    val fm = LocalFocusManager.current
+    val D = LocalDs.current
+    val bring = remember { BringIntoViewRequester() }
+    val fieldFocusedState = LocalFieldFocused.current
+    androidx.compose.runtime.DisposableEffect(focused) { if (focused) fieldFocusedState?.value = true; onDispose { if (focused) fieldFocusedState?.value = false } }
+    val imeAskedAt = LocalImeAskedAt.current
+    // Fenêtre passée en compact (clavier) : le champ en cours de saisie est ramené dans la partie visible.
+    LaunchedEffect(focused, (imeAskedAt?.value ?: 0L) > 0) {
+        if (focused && (imeAskedAt?.value ?: 0L) > 0) { kotlinx.coroutines.delay(120); runCatching { bring.bringIntoView() } }
+    }
+    val submit = LocalSubmitFocus.current
+    val formSubmit = LocalFormSubmit.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val fieldScope = androidx.compose.runtime.rememberCoroutineScope()
+    // « Visité puis quitté vide » : l'erreur ne s'affiche JAMAIS à l'ouverture, seulement après un passage dans le champ.
+    var settled by remember { mutableStateOf(false) }
+    var touched by remember { mutableStateOf(false) }
+    val attempted = LocalSubmitAttempted.current?.value == true
+    androidx.compose.runtime.LaunchedEffect(focused) {
+        if (focused) { runCatching { bring.bringIntoView() }; kotlinx.coroutines.delay(300); settled = true }
+        else if (settled) touched = true   // quitté après y être réellement resté (pas un transfert de focus à l'ouverture)
+    }
+    // Focus initial sur le champ principal : sans cela le D-pad reste derrière le dialogue.
+    LaunchedEffect(autoFocus) {
+        if (autoFocus) runCatching { focusRequester.requestFocus() }
+    }
+    val shownError = error ?: if (required && value.isBlank() && !focused && (touched || attempted)) D.fieldRequired else null
+    val touch = com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current
+    Column(verticalArrangement = Arrangement.spacedBy(if (touch) 6.dp else 10.design), modifier = Modifier.fillMaxWidth()) {
+        Text(label, color = if (focused) Ux.Text else Ux.Text2, fontFamily = Manrope, fontWeight = FontWeight.Bold, fontSize = if (touch) 13.sp else 22.spx)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(if (touch) 52.dp else 72.design)
+                .clip(RoundedCornerShape(18.design))
+                .background(Ux.Surface)
+                .then(
+                    when {
+                        focused -> Modifier.border(4.design, Ux.Accent, RoundedCornerShape(18.design))
+                        shownError != null -> Modifier.border(2.design, Color(0xFFEF4444), RoundedCornerShape(18.design))
+                        else -> Modifier
+                    },
+                )
+                .padding(horizontal = 24.design),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                singleLine = true,
+                textStyle = TextStyle(color = Ux.Text, fontFamily = Manrope, fontSize = if (touch) 16.sp else 24.spx),
+                cursorBrush = SolidColor(Ux.Accent),
+                visualTransformation = visual ?: if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (password) KeyboardType.Password else keyboardType,
+                    imeAction = if (last) ImeAction.Done else ImeAction.Next,
+                    autoCorrect = false,
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { fm.moveFocus(FocusDirection.Down) },
+                    // « OK / Terminé » : valide (tactile) ou ferme le clavier puis va sur le bouton principal (TV : les boutons
+                    // ne sont affichés qu'une fois le clavier fermé, mode compact).
+                    onDone = {
+                        imeAskedAt?.value = 0L
+                        if (formSubmit != null) formSubmit()
+                        else if (submit != null) { keyboard?.hide(); fieldScope.launch { repeat(10) { kotlinx.coroutines.delay(80); if (runCatching { submit.requestFocus() }.isSuccess) return@launch } } }
+                        else fm.moveFocus(FocusDirection.Down)
+                    },
+                ),
+                interactionSource = interaction,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .modalFocusMemory(focusRequester)
+                    .bringIntoViewRequester(bring)
+                    .onPreviewKeyEvent { ev ->
+                        // OK sur le champ : le clavier va s'ouvrir (la touche n'est pas consommée).
+                        if (ev.type == KeyEventType.KeyDown && (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter))
+                            imeAskedAt?.value = android.os.SystemClock.uptimeMillis() + 1
+                        false
+                    }
+                    .then(
+                        if (last && submit != null) Modifier.onPreviewKeyEvent { ev ->
+                            // ▼ depuis le dernier champ : droit sur le bouton principal (et non sur « Annuler »).
+                            if (ev.key == Key.DirectionDown) {
+                                if (ev.type == KeyEventType.KeyDown && runCatching { submit.requestFocus() }.isFailure) {
+                                    // Bouton absent (clavier ouvert, mode compact) : on ferme le clavier, puis on y va.
+                                    keyboard?.hide(); fieldScope.launch { repeat(10) { kotlinx.coroutines.delay(80); if (runCatching { submit.requestFocus() }.isSuccess) return@launch } }
+                                }
+                                true
+                            } else false
+                        } else Modifier,
+                    )
+                    .leaveOnVerticalDpad()
+                    .then(if (testTag != null) Modifier.testTag(testTag) else Modifier),
+                decorationBox = { inner ->
+                    if (value.isEmpty() && placeholder != null) {
+                        Text(placeholder, color = Ux.Muted, fontFamily = Manrope, fontSize = if (touch) 16.sp else 24.spx, maxLines = 1)
+                    }
+                    inner()
+                },
+            )
+        }
+        if (shownError != null) {
+            Text(shownError, color = Ux.Err, fontFamily = Manrope, fontSize = if (touch) 12.sp else 22.spx)
+        }
+    }
+}
+
+@Composable
+fun XtreamDialog(onDismiss: () -> Unit, onSubmit: (name: String, url: String, user: String, pass: String) -> Unit) {
+    val locked = com.ultratv.tv.nativeapp.Brand.locked
+    var name by remember { mutableStateOf(if (locked) com.ultratv.tv.nativeapp.Brand.providerName else "") }
+    var url by remember { mutableStateOf(if (locked) com.ultratv.tv.nativeapp.Brand.host else "") }
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    val S = LocalStrings.current
+    val D = LocalDs.current
+    val urlOk = url.isBlank() || isValidHttpUrl(url)
+    val canSubmit = isValidHttpUrl(url) && user.isNotBlank() && pass.isNotBlank()
+    AddProviderDialog(
+        title = if (locked) com.ultratv.tv.nativeapp.Brand.providerName else "Xtream Codes",
+        subtitle = D.formSubXtream,
+        icon = Icons.Monitor,
+        onDismiss = onDismiss,
+        onSubmit = { onSubmit(name, url.trim(), user.trim(), pass) },
+        canSubmit = canSubmit,
+    ) {
+        // Marque verrouillée : serveur et nom fixés, seuls l'identifiant et le mot de passe sont demandés.
+        if (!locked) {
+            // Ordre de la maquette : nom (facultatif), serveur, identifiant, mot de passe. Le focus initial est sur le serveur.
+            FormField(S.fieldNameOptional, name, { name = it }, placeholder = D.formNamePh, testTag = "field-name")
+            FormField(S.fieldServerUrl, url, { url = it }, keyboardType = KeyboardType.Uri,
+                placeholder = "http://serveur:port", autoFocus = true, required = true,
+                error = if (urlOk) null else S.wiz.invalidUrl, testTag = "field-url")
+        }
+        FormField(S.fieldUsername, user, { user = it }, autoFocus = locked, required = true, testTag = "field-user")
+        FormField(S.fieldPassword, pass, { pass = it }, password = true, last = true, required = true, placeholder = "••••••••", testTag = "field-pass")
+    }
+}
+
+@Composable
+fun M3uDialog(onDismiss: () -> Unit, onSubmit: (name: String, url: String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    val S = LocalStrings.current
+    val D = LocalDs.current
+    val urlOk = url.isBlank() || isValidHttpUrl(url)
+    val recognized = com.ultratv.tv.nativeapp.data.net.XtreamUrl.parse(url) != null
+    AddProviderDialog(
+        title = "M3U",
+        subtitle = D.formSubM3u,
+        icon = Icons.List,
+        onDismiss = onDismiss,
+        onSubmit = { onSubmit(name, url.trim()) },
+        canSubmit = isValidHttpUrl(url),
+    ) {
+        FormField(S.fieldNameOptional, name, { name = it }, placeholder = D.formNamePh, testTag = "field-name")
+        FormField(S.fieldPlaylistUrl, url, { url = it }, keyboardType = KeyboardType.Uri,
+            placeholder = "https://hote.tld/liste.m3u", autoFocus = true, last = true, required = true,
+            error = if (urlOk) null else S.wiz.invalidUrl, testTag = "field-url")
+        if (recognized) Text(D.xtreamRecognized, fontFamily = Manrope, fontSize = 22.spx, color = Ux.Text3, maxLines = 2, modifier = Modifier.testTag("xtream-recognized"))
+    }
+}
+
+/**
+ * Adresse MAC saisie à la télécommande : la valeur ne contient QUE les 12 chiffres hexadécimaux, les « : » sont
+ * seulement affichés (le curseur reste juste, aucun séparateur à taper ni à effacer).
+ */
+object MacVisualTransformation : VisualTransformation {
+    override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+        val raw = text.text
+        val out = raw.chunked(2).joinToString(":")
+        val mapping = object : androidx.compose.ui.text.input.OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = (offset + if (offset <= 0) 0 else (offset - 1) / 2).coerceIn(0, out.length)
+            override fun transformedToOriginal(offset: Int): Int = (offset - offset / 3).coerceIn(0, raw.length)
+        }
+        return androidx.compose.ui.text.input.TransformedText(androidx.compose.ui.text.AnnotatedString(out), mapping)
+    }
+}
+
+/** Saisie MAC → 12 chiffres hexadécimaux au plus, en majuscules (tout autre caractère est ignoré). */
+internal fun macDigits(input: String): String = input.filter { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }.uppercase().take(12)
+
+/**
+ * « Portail Stalker (MAC) » : adresse du portail, MAC (préremplie avec le préfixe des boîtiers MAG 00:1A:79), identifiant et
+ * mot de passe facultatifs. [onSubmit] reçoit la MAC normalisée ; le dialogue reste ouvert pendant la vérification
+ * ([busy]) et se ferme quand l'appelant a fini.
+ */
+@Composable
+fun StalkerDialog(onDismiss: () -> Unit, busy: Boolean = false, onBack: (() -> Unit)? = null, onSubmit: (name: String, portal: String, mac: String, login: String, pass: String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    var mac by remember { mutableStateOf(com.ultratv.tv.nativeapp.data.stalker.StalkerMac.DEFAULT_PREFIX.filter { it != ':' }) }
+    var login by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    val S = LocalStrings.current
+    val D = LocalDs.current
+    val urlOk = url.isBlank() || isValidHttpUrl(url)
+    val macOk = mac.length == 12
+    AddProviderDialog(
+        title = D.kindStalker,
+        subtitle = D.formSubStalker,
+        icon = Icons.Monitor,
+        onDismiss = onDismiss,
+        onSubmit = { if (!busy) onSubmit(name, url.trim(), mac.chunked(2).joinToString(":"), login.trim(), pass) },
+        canSubmit = isValidHttpUrl(url) && macOk && !busy,
+        submitLabel = if (busy) D.stalkerChecking else null,
+        onBack = onBack,
+    ) {
+        FormField(S.fieldNameOptional, name, { name = it }, placeholder = D.formNamePh, testTag = "field-name")
+        FormField(D.fieldPortalUrl, url, { url = it }, keyboardType = KeyboardType.Uri,
+            placeholder = "http://portail:8080/c/", autoFocus = true, required = true,
+            error = if (urlOk) null else S.wiz.invalidUrl, testTag = "field-url")
+        FormField(D.fieldMac, mac, { mac = macDigits(it) }, keyboardType = KeyboardType.Ascii,
+            placeholder = "00:1A:79:XX:XX:XX", required = true, visual = MacVisualTransformation, testTag = "field-mac")
+        Text(D.macHint, fontFamily = Manrope, fontSize = 20.spx, color = Ux.Text3, maxLines = 2)
+        FormField(D.fieldPortalLogin, login, { login = it }, testTag = "field-login")
+        FormField(D.fieldPortalPassword, pass, { pass = it }, password = true, last = true, placeholder = "••••••••", testTag = "field-pass")
+    }
+}
