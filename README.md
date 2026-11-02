@@ -10,3 +10,4 @@
 - كود التطبيق بمجلد `android-native/`
 - إعدادات البراند (الاسم، الهوست، المعرّف) بملف `android-native/brand.properties`
 - الشرح الكامل بملف [KANAANI.md](KANAANI.md)
+
