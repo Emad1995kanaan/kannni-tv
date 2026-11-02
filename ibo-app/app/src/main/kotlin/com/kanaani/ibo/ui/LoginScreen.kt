@@ -57,7 +57,7 @@ fun LoginScreen() {
         checking = true
         error = null
         scope.launch {
-            val x = Xtream(Brand.host, user.trim(), pass)
+            val x = Xtream(Brand.hosts, user.trim(), pass)
             val acc = x.account()
             val expired = acc?.expiresAt?.let { it < System.currentTimeMillis() } == true
             val status = acc?.status?.lowercase()

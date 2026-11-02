@@ -18,6 +18,7 @@ fun javaString(s: String): String = "\"" + s.replace("\\", "\\\\").replace("\"",
 val appName = brand("BRAND_APP_NAME", "Kanaani")
 val appId = brand("BRAND_APP_ID", "com.kanaani.tv.ibo")
 val host = brand("BRAND_HOST", "").trimEnd('/')
+val backupHost = brand("BRAND_BACKUP_HOST", "").trimEnd('/')
 val providerName = brand("BRAND_PROVIDER_NAME", appName)
 // Fichier update.json publié par la CI dans la dernière release (vide = pas de mises à jour intégrées).
 val updateUrl = brand("BRAND_UPDATE_URL", "")
@@ -45,6 +46,7 @@ android {
         resValue("string", "app_name", appName)
         buildConfigField("String", "BRAND_HOST", javaString(host))
         buildConfigField("String", "BRAND_PROVIDER_NAME", javaString(providerName))
+        buildConfigField("String", "BRAND_BACKUP_HOST", javaString(backupHost))
         buildConfigField("String", "UPDATE_URL", javaString(updateUrl))
         buildConfigField("String", "ADS_URL", javaString(adsUrl))
         buildConfigField("String", "MSG_SERVER", javaString(msgServer))

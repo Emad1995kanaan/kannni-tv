@@ -89,7 +89,7 @@ object Store {
         language = sp.getString("lang", "ar") ?: "ar"
         val u = sp.getString("user", null)
         val p = sp.getString("pass", null)
-        session = if (!u.isNullOrEmpty() && p != null && Brand.host.isNotEmpty()) Xtream(Brand.host, u, p) else null
+        session = if (!u.isNullOrEmpty() && p != null && Brand.host.isNotEmpty()) Xtream(Brand.hosts, u, p) else null
         favorites = decode(sp.getString("favorites", null))
         categoryOrders = listOf("live", "movie", "series").associateWith { k ->
             sp.getString("order_$k", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
@@ -102,6 +102,10 @@ object Store {
         aspect = sp.getInt("aspect", 0).mod(3)
         homeTheme = sp.getInt("home_theme", 0).let { if (it == 1) 1 else 0 }
     }
+
+    /** Dernier serveur (principal / secours) qui a répondu. */
+    fun lastHost(): String? = sp.getString("host", null)
+    fun rememberHost(h: String) { sp.edit().putString("host", h).apply() }
 
     fun watchOf(kind: String, id: String): Watch? = watching.firstOrNull { it.kind == kind && it.id == id }
 

@@ -23,6 +23,8 @@ object Http {
         .followRedirects(true)
         .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("User-Agent", USER_AGENT).build()) }
         .build()
+    /** API : délai de connexion court pour basculer vite sur le serveur de secours. */
+    val api: OkHttpClient = client.newBuilder().connectTimeout(7, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
 }
 
 data class Account(
@@ -75,20 +77,38 @@ private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
  * API Xtream Codes, chargée À LA DEMANDE (comme IBO Player) : rien n'est téléchargé d'avance ; chaque catégorie est
  * lue au moment où on l'ouvre puis gardée en mémoire pour la session.
  */
-class Xtream(val host: String, val username: String, val password: String) {
+class Xtream(val hosts: List<String>, val username: String, val password: String) {
     private val cache = ConcurrentHashMap<String, Any>()
 
-    private fun url(action: String?, extra: String = ""): String {
-        val base = "$host/player_api.php?username=${enc(username)}&password=${enc(password)}"
+    /**
+     * Serveur utilisé en ce moment : [hosts] = principal puis secours. On repart du dernier serveur qui a répondu ;
+     * au premier appel de la session on réessaie d'abord le principal (retour automatique quand il revient).
+     */
+    @Volatile var host: String = Store.lastHost()?.takeIf { it in hosts } ?: hosts.first()
+        private set
+    @Volatile private var primaryTried = false
+
+    private fun url(h: String, action: String?, extra: String = ""): String {
+        val base = "$h/player_api.php?username=${enc(username)}&password=${enc(password)}"
         return if (action == null) base else "$base&action=$action$extra"
     }
 
-    private suspend fun get(url: String): JsonElement? = withContext(Dispatchers.IO) {
-        runCatching {
-            Http.client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-                if (!r.isSuccessful) null else json.parseToJsonElement(r.body.string())
+    /** Appel API avec bascule : si le serveur ne répond pas (réseau, erreur HTTP, réponse illisible), on passe au suivant. */
+    private suspend fun get(action: String?, extra: String = ""): JsonElement? = withContext(Dispatchers.IO) {
+        val first = if (!primaryTried) hosts.first() else host
+        primaryTried = true
+        for (h in listOf(first) + hosts.filter { it != first }) {
+            val res = runCatching {
+                Http.api.newCall(Request.Builder().url(url(h, action, extra)).build()).execute().use { r ->
+                    if (!r.isSuccessful) null else json.parseToJsonElement(r.body.string())
+                }
+            }.getOrNull()
+            if (res != null) {
+                if (h != host) { host = h; Store.rememberHost(h) }
+                return@withContext res
             }
-        }.getOrNull()
+        }
+        null
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -103,7 +123,7 @@ class Xtream(val host: String, val username: String, val password: String) {
 
     /** null = serveur injoignable ou réponse illisible ; status null = identifiants refusés. */
     suspend fun account(): Account? {
-        val root = get(url(null)) as? JsonObject ?: return null
+        val root = get(null) as? JsonObject ?: return null
         val ui = root["user_info"] as? JsonObject ?: return Account(null, null, null, null, null, false)
         if (ui.str("auth") == "0") return Account(null, null, null, null, null, false)
         return Account(
@@ -117,7 +137,7 @@ class Xtream(val host: String, val username: String, val password: String) {
     }
 
     private suspend fun categories(action: String): List<Category> = cached(action) {
-        get(url(action))?.objects()?.mapNotNull { o ->
+        get(action)?.objects()?.mapNotNull { o ->
             val id = o.str("category_id") ?: return@mapNotNull null
             Category(id, o.str("category_name") ?: id)
         }
@@ -134,7 +154,7 @@ class Xtream(val host: String, val username: String, val password: String) {
 
     private suspend fun loadChannels(categoryId: String?): List<Channel> = cached("live:${categoryId ?: "*"}") {
         val extra = categoryId?.let { "&category_id=${enc(it)}" } ?: ""
-        get(url("get_live_streams", extra))?.objects()?.mapNotNull { o ->
+        get("get_live_streams", extra)?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
             Channel(id, o.str("name") ?: id, o.str("stream_icon"), o.int("num") ?: 0, o.str("category_id"))
         }
@@ -145,7 +165,7 @@ class Xtream(val host: String, val username: String, val password: String) {
         loadMovies(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("movie", it.categoryId) } else l }
 
     private suspend fun loadMovies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
-        get(url("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
+        get("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: "")?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
             Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"),
                 added = o.str("added")?.toLongOrNull() ?: 0)
@@ -157,7 +177,7 @@ class Xtream(val host: String, val username: String, val password: String) {
         loadShows(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("series", it.categoryId) } else l }
 
     private suspend fun loadShows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
-        get(url("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
+        get("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: "")?.objects()?.mapNotNull { o ->
             val id = o.str("series_id") ?: return@mapNotNull null
             Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"),
                 updated = o.str("last_modified")?.toLongOrNull() ?: 0)
@@ -171,7 +191,7 @@ class Xtream(val host: String, val username: String, val password: String) {
     suspend fun latestShows(limit: Int = 30): List<Show> = shows(null).filter { it.updated > 0 }.sortedByDescending { it.updated }.take(limit)
 
     suspend fun movieInfo(id: String): MovieInfo? = cached("vodinfo:$id") {
-        val root = get(url("get_vod_info", "&vod_id=${enc(id)}")) as? JsonObject ?: return@cached null
+        val root = get("get_vod_info", "&vod_id=${enc(id)}") as? JsonObject ?: return@cached null
         val i = root["info"] as? JsonObject ?: JsonObject(emptyMap())
         val backdrop = (i["backdrop_path"] as? JsonArray)?.firstOrNull()?.let { (it as? JsonPrimitive)?.contentOrNull }
             ?: i.str("backdrop_path") ?: i.str("cover_big") ?: i.str("movie_image")
@@ -188,7 +208,7 @@ class Xtream(val host: String, val username: String, val password: String) {
     }
 
     suspend fun showInfo(id: String): ShowInfo? = cached("seriesinfo:$id") {
-        val root = get(url("get_series_info", "&series_id=${enc(id)}")) as? JsonObject ?: return@cached null
+        val root = get("get_series_info", "&series_id=${enc(id)}") as? JsonObject ?: return@cached null
         val i = root["info"] as? JsonObject ?: JsonObject(emptyMap())
         val episodes = root["episodes"]
         val seasons = sortedMapOf<Int, List<Episode>>()
