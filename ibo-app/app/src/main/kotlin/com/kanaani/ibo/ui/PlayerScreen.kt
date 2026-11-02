@@ -201,7 +201,7 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
             }
         }
         var controlsVisible by remember { mutableStateOf(true) }
-        PlayerSurface(controls = !s.live, onView = { v ->
+        PlayerSurface(controls = !s.live, resync = s.live, onView = { v ->
             playerView = v
             v.setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { vis -> controlsVisible = vis == android.view.View.VISIBLE })
         })

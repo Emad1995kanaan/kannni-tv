@@ -86,6 +86,17 @@ object Playback {
         p.seekTo((p.currentPosition + deltaMs).coerceIn(0, dur))
     }
 
+    /**
+     * Direct : nouvelle surface vidéo (aperçu → plein écran et retour). Sur certains appareils le décodeur reste figé
+     * sur l'ancienne surface (son OK, image arrêtée) : on resynchronise le flux sur le direct.
+     */
+    fun resync() {
+        val p = exo ?: return
+        if (p.currentMediaItem == null || p.playbackState == Player.STATE_IDLE || error) return
+        p.seekToDefaultPosition()
+        p.playWhenReady = true
+    }
+
     fun togglePause() { exo?.let { it.playWhenReady = !it.playWhenReady } }
 
     /** Position et durée (ms) ; durée ≤ 0 tant qu'elle n'est pas connue. */
