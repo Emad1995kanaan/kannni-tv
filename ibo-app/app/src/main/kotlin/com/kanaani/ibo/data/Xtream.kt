@@ -155,10 +155,10 @@ class Xtream(val host: String, val username: String, val password: String) {
     } ?: emptyList()
 
     /** Films les plus récemment ajoutés au serveur (toutes catégories). */
-    suspend fun latestMovies(limit: Int = 300): List<Movie> = movies(null).filter { it.added > 0 }.sortedByDescending { it.added }.take(limit)
+    suspend fun latestMovies(limit: Int = 30): List<Movie> = movies(null).filter { it.added > 0 }.sortedByDescending { it.added }.take(limit)
 
     /** Séries les plus récemment mises à jour (nouveaux épisodes), toutes catégories. */
-    suspend fun latestShows(limit: Int = 300): List<Show> = shows(null).filter { it.updated > 0 }.sortedByDescending { it.updated }.take(limit)
+    suspend fun latestShows(limit: Int = 30): List<Show> = shows(null).filter { it.updated > 0 }.sortedByDescending { it.updated }.take(limit)
 
     suspend fun movieInfo(id: String): MovieInfo? = cached("vodinfo:$id") {
         val root = get(url("get_vod_info", "&vod_id=${enc(id)}")) as? JsonObject ?: return@cached null
