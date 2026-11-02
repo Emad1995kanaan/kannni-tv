@@ -27,6 +27,8 @@ val adsUrl = brand("BRAND_ADS_URL", "")
 // Messages instantanés (ntfy) : serveur et sujet secret (vide = désactivé).
 val msgServer = brand("BRAND_MSG_SERVER", "https://ntfy.sh")
 val msgTopic = brand("BRAND_MSG_TOPIC", "")
+// Clé TMDB (images et notes des films du panneau publicitaire) : secret TMDB_KEY.
+val tmdbKey = brand("BRAND_TMDB_KEY", "")
 
 // Version : fichier VERSION à la racine du dépôt (x.y.z) → versionCode = x*10000 + y*100 + z.
 val versionName0: String = rootProject.file("../VERSION").readText().trim()
@@ -51,6 +53,7 @@ android {
         buildConfigField("String", "ADS_URL", javaString(adsUrl))
         buildConfigField("String", "MSG_SERVER", javaString(msgServer))
         buildConfigField("String", "MSG_TOPIC", javaString(msgTopic))
+        buildConfigField("String", "TMDB_KEY", javaString(tmdbKey))
     }
 
     signingConfigs {

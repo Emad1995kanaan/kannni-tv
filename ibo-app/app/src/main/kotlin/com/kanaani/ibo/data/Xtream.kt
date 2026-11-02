@@ -49,6 +49,7 @@ data class Show(val id: String, val name: String, val poster: String?, val ratin
 data class MovieInfo(
     val plot: String?, val genre: String?, val year: String?, val duration: String?,
     val backdrop: String?, val director: String?, val cast: String?, val rating: String?,
+    val tmdbId: String? = null,
 )
 
 data class Episode(val id: String, val title: String, val number: Int, val season: Int, val ext: String, val plot: String?, val image: String?, val duration: String?)
@@ -220,6 +221,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
             director = i.str("director"),
             cast = i.str("cast") ?: i.str("actors"),
             rating = i.str("rating"),
+            tmdbId = i.str("tmdb_id") ?: i.str("tmdb") ?: (root["movie_data"] as? JsonObject)?.str("tmdb_id"),
         )
     }
 

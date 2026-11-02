@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -53,34 +54,72 @@ import kotlinx.coroutines.delay
 
 // ───────────── Thèmes d'accueil : 0 = classique, 1 = panneau publicitaire ─────────────
 
-/** Diaporama publicitaire : change d'image toutes les [Ads.interval] secondes (fondu), points de position en bas. */
+/**
+ * Diaporama du panneau : publicités et/ou derniers films (image qui avance lentement, titre et note), une image toutes
+ * les [Ads.interval] secondes. Purement décoratif : jamais focalisable ni cliquable.
+ */
 @Composable
-fun AdCarousel(images: List<String>, modifier: Modifier, corner: Dp = 18.dp) {
-    var index by remember(images) { mutableIntStateOf(0) }
-    LaunchedEffect(images, Ads.interval) {
-        if (images.size < 2) return@LaunchedEffect
-        while (true) { delay(Ads.interval * 1000L); index = (index + 1) % images.size }
+fun AdCarousel(slides: List<com.kanaani.ibo.data.Slide>, modifier: Modifier, corner: Dp = 18.dp) {
+    var index by remember(slides) { mutableIntStateOf(0) }
+    LaunchedEffect(slides, Ads.interval) {
+        if (slides.size < 2) return@LaunchedEffect
+        while (true) { delay(Ads.interval * 1000L); index = (index + 1) % slides.size }
     }
     Box(modifier.clip(RoundedCornerShape(corner)).background(Brush.linearGradient(listOf(C.cardHi, C.panel)))) {
-        if (images.isEmpty()) {
-            // Pas encore de publicité : logo de la marque.
+        if (slides.isEmpty()) {
+            // Rien à montrer (pas encore chargé) : logo de la marque.
             Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                 Logo(72.dp)
                 Spacer(Modifier.width(14.dp))
                 Text(Brand.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 30.sp)
             }
         } else {
-            Crossfade(images[index.coerceIn(0, images.lastIndex)], animationSpec = tween(700), label = "ad") { url ->
-                AsyncImage(url, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Crossfade(slides[index.coerceIn(0, slides.lastIndex)], animationSpec = tween(800), label = "ad") { s ->
+                Box(Modifier.fillMaxSize()) {
+                    if (s.title == null) AsyncImage(s.image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    else {
+                        // Film : l'image avance doucement (zoom + glissement) pendant qu'elle est affichée.
+                        val move = remember { androidx.compose.animation.core.Animatable(0f) }
+                        LaunchedEffect(s) { move.animateTo(1f, tween(Ads.interval * 1000 + 1500, easing = androidx.compose.animation.core.LinearEasing)) }
+                        AsyncImage(s.image, null, Modifier.fillMaxSize().graphicsLayer {
+                            val k = 1.04f + 0.10f * move.value
+                            scaleX = k; scaleY = k
+                            translationX = (move.value - 0.5f) * size.width * 0.05f
+                        }, contentScale = ContentScale.Crop)
+                        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xE6000000))))
+                        Column(Modifier.align(Alignment.BottomStart).padding(start = 22.dp, end = 22.dp, bottom = 26.dp)) {
+                            Text(s.title, color = Color.White, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 26.sp, maxLines = 2)
+                            if (s.rating != null) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                                Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFF5C518)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                    Text("★ " + s.rating, color = Color.Black, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Label(Str.latestMovies, 13.sp, C.text2, FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
             }
-            if (images.size > 1) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                images.indices.forEach { i ->
+            if (slides.size > 1) Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                slides.indices.forEach { i ->
                     Box(Modifier.height(6.dp).width(if (i == index) 20.dp else 6.dp).clip(RoundedCornerShape(3.dp))
                         .background(if (i == index) Color.White else Color(0x88FFFFFF)))
                 }
             }
         }
     }
+}
+
+/** Publicités puis films : une publicité, 3 films, une publicité… (films seuls s'il n'y a pas de publicité). */
+fun billboardSlides(ads: List<String>, movies: List<com.kanaani.ibo.data.Slide>): List<com.kanaani.ibo.data.Slide> {
+    val a = ads.map { com.kanaani.ibo.data.Slide(it) }
+    if (a.isEmpty()) return movies
+    if (movies.isEmpty()) return a
+    val out = mutableListOf<com.kanaani.ibo.data.Slide>()
+    var m = 0
+    for (ad in a) { out += ad; repeat(3) { if (m < movies.size) out += movies[m++] } }
+    while (m < movies.size) out += movies[m++]
+    return out
 }
 
 @Composable
@@ -123,7 +162,8 @@ private fun BottomTile(label: String, icon: String, modifier: Modifier, onClick:
 
 /** Thème « panneau publicitaire » : Direct / Films / Séries empilés à droite, publicité 16:9 à côté, raccourcis en bas. */
 @Composable
-fun BillboardHome(nav: Navigator, now: Long) {
+fun BillboardHome(nav: Navigator, x: Xtream, now: Long) {
+    LaunchedEffect(x) { com.kanaani.ibo.data.Promo.refresh(x) }
     val first = remember { FocusRequester() }
     InitialFocus(first)
     Backdrop {
@@ -136,7 +176,8 @@ fun BillboardHome(nav: Navigator, now: Long) {
                     StackTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
                     StackTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
                 }
-                AdCarousel(Ads.billboard, Modifier.weight(1f).fillMaxHeight())
+                val slides = remember(Ads.billboard, com.kanaani.ibo.data.Promo.movies) { billboardSlides(Ads.billboard, com.kanaani.ibo.data.Promo.movies) }
+                AdCarousel(slides, Modifier.weight(1f).fillMaxHeight())
             }
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth().height(46.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

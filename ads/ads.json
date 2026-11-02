@@ -1,6 +1,4 @@
 {
   "interval": 10,
-  "billboard": [
-    "billboard1.jpg"
-  ]
+  "billboard": []
 }
