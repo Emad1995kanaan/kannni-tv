@@ -52,6 +52,7 @@ jobs:
           BRAND_KEYSTORE_PASSWORD: ${{ secrets.BRAND_KEYSTORE_PASSWORD }}
           BRAND_KEY_ALIAS: ${{ secrets.BRAND_KEY_ALIAS }}
           BRAND_KEY_PASSWORD: ${{ secrets.BRAND_KEY_PASSWORD }}
+          MSG_TOPIC: ${{ secrets.MSG_TOPIC }}
         run: |
           chmod +x gradlew
           mkdir -p ../out/classic ../out/ibo
@@ -63,7 +64,7 @@ jobs:
             done
           }
           # 1) كنعاني IBO: التطبيق الجديد الخفيف (مجلد ibo-app)، بيحمّل كل فئة وقت فتحها
-          (cd ../ibo-app && chmod +x gradlew && ./gradlew assembleRelease --console=plain --stacktrace && collect Kanaani-IBO ibo)
+          (cd ../ibo-app && chmod +x gradlew && ./gradlew assembleRelease -PBRAND_MSG_TOPIC="$MSG_TOPIC" --console=plain --stacktrace && collect Kanaani-IBO ibo)
           # 2) كنعاني العادي (الإعدادات من android-native/brand.properties)
           ./gradlew assembleRelease --console=plain --stacktrace
           collect Kanaani classic
