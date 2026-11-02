@@ -39,7 +39,7 @@ object Store {
         favorites = decode(sp.getString("favorites", null))
     }
 
-    fun setLanguage(code: String) {
+    fun chooseLanguage(code: String) {
         language = code
         sp.edit().putString("lang", code).apply()
     }
