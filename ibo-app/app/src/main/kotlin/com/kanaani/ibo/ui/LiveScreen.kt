@@ -53,7 +53,9 @@ import com.kanaani.ibo.player.Playback
 @Composable
 fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
     val ctx = LocalContext.current
-    val categories by produceState<List<Category>?>(null, x) { value = x.liveCategories() }
+    val serverCategories by produceState<List<Category>?>(null, x) { value = x.liveCategories() }
+    // Ordre choisi dans Réglages › Ordre des chaînes.
+    val categories = remember(serverCategories, Store.categoryOrders, Store.categoryNames) { serverCategories?.let { Store.arrange("live", it) } }
     // Pas de favoris : on ouvre directement la première catégorie.
     LaunchedEffect(categories) {
         val cats = categories ?: return@LaunchedEffect
@@ -72,7 +74,8 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
             else -> {
                 val list = x.channels(c)
                 // Catégorie israélienne : sport puis info, chaque chaîne de la qualité normale à la 4K.
-                val name = categories?.firstOrNull { it.id == c }?.name
+                // Nom d'origine du serveur (pas celui choisi par l'utilisateur) pour reconnaître la catégorie.
+                val name = serverCategories?.firstOrNull { it.id == c }?.name
                 if (com.kanaani.ibo.data.ChannelOrder.isIsraeli(name)) com.kanaani.ibo.data.ChannelOrder.sortIsraeli(list) else list
             }
         }

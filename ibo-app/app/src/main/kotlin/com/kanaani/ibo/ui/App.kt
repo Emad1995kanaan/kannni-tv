@@ -30,6 +30,7 @@ fun App(onExit: () -> Unit) {
         is Screen.ShowDetail -> ShowDetailScreen(nav, session, top)
         is Screen.Play -> PlayerScreen(nav, session, top)
         Screen.Favorites -> FavoritesScreen(nav, session)
+        is Screen.Reorder -> ReorderScreen(session, top)
         Screen.Account -> AccountScreen(session)
         Screen.Settings -> SettingsScreen(nav, session)
     }

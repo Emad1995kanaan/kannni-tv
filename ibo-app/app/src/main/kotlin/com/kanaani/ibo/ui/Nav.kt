@@ -48,6 +48,8 @@ sealed class Screen {
         val episodes: List<Episode> = emptyList(),
     ) : Screen()
     object Favorites : Screen()
+    /** Ordre des catégories d'un type : "live", "movie" ou "series". */
+    class Reorder(val kind: String) : Screen()
     object Account : Screen()
     object Settings : Screen()
 

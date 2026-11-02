@@ -82,6 +82,29 @@ object Str {
 
     // Réglages
     val language get() = t("Language", "اللغة", "שפה")
+    val orderLive get() = t("Order channels", "ترتيب القنوات", "סידור ערוצים")
+    val orderMovies get() = t("Order movies", "ترتيب الأفلام", "סידור סרטים")
+    val orderSeries get() = t("Order series", "ترتيب المسلسلات", "סידור סדרות")
+    val orderHint get() = t(
+        "Press OK on a category to pick it up, move it with ▲ ▼, then press OK again to drop it. On a phone, use the arrows next to each category.",
+        "اضغط OK على الفئة لتمسكها، حرّكها بالأسهم ▲ ▼، واضغط OK مرة ثانية لتثبيتها. على الجوال استعمل الأسهم اللي جنب كل فئة.",
+        "לחצו OK על קטגוריה כדי לתפוס אותה, הזיזו עם ▲ ▼ ולחצו OK שוב כדי לשחרר. בטלפון השתמשו בחצים שליד כל קטגוריה.")
+    val orderReset get() = t("Restore original order", "إرجاع الترتيب الأصلي", "שחזור הסדר המקורי")
+    val moving get() = t("Moving", "عم تتحرك", "בהזזה")
+    val reorderHint get() = t(
+        "Press OK on categories to select them (✓), then use the buttons above to move or rename. Arrows next to a category move it alone.",
+        "اضغط OK على الفئات لتحديدها (✓)، بعدين استعمل الأزرار فوق للتحريك أو إعادة التسمية. الأسهم جنب الفئة بتحرّكها لحالها.",
+        "לחצו OK על קטגוריות כדי לבחור אותן (✓), ואז השתמשו בכפתורים למעלה להזזה או לשינוי שם. החצים ליד קטגוריה מזיזים רק אותה.")
+    fun selected(n: Int) = t("$n selected", "محدد $n", "נבחרו $n")
+    val moveUp get() = t("Up", "لفوق", "למעלה")
+    val moveDown get() = t("Down", "لتحت", "למטה")
+    val toTop get() = t("To top", "لأول القائمة", "לראש הרשימה")
+    val toBottom get() = t("To bottom", "لآخر القائمة", "לסוף הרשימה")
+    val rename get() = t("Rename", "إعادة تسمية", "שינוי שם")
+    val clearSelection get() = t("Clear", "إلغاء التحديد", "ניקוי בחירה")
+    val save get() = t("Save", "حفظ", "שמירה")
+    val originalName get() = t("Original name", "الاسم الأصلي", "השם המקורי")
+    val restoreName get() = t("Restore original name", "إرجاع الاسم الأصلي", "שחזור השם המקורי")
     val refresh get() = t("Refresh content", "تحديث المحتوى", "רענון תוכן")
     val refreshed get() = t("Content will be reloaded", "رح يتم تحديث المحتوى", "התוכן ייטען מחדש")
     val logout get() = t("Log out", "تسجيل الخروج", "התנתקות")

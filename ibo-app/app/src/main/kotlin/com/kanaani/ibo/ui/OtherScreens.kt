@@ -161,6 +161,9 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
     val items = listOf(
         SettingItem(Str.language, Icons.Globe) { dialog = "lang" },
         SettingItem(Str.account, Icons.Account) { nav.go(Screen.Account) },
+        SettingItem(Str.orderLive, Icons.Live) { nav.go(Screen.Reorder("live")) },
+        SettingItem(Str.orderMovies, Icons.Movies) { nav.go(Screen.Reorder("movie")) },
+        SettingItem(Str.orderSeries, Icons.Series) { nav.go(Screen.Reorder("series")) },
         SettingItem(Str.refresh, Icons.Refresh) { x.clearCache(); AccountCache.value = null; toast = Str.refreshed },
         SettingItem(Str.about, Icons.Info) { dialog = "about" },
         SettingItem(Str.logout, Icons.Logout, C.danger) { dialog = "logout" },
@@ -168,10 +171,12 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
     Backdrop {
         Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 18.dp)) {
             Header(Str.settings)
-            Spacer(Modifier.height(28.dp))
-            Row(Modifier.fillMaxWidth().height(150.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items.forEachIndexed { i, item ->
-                    Tile(item.onClick, (if (i == 0) Modifier.focusRequester(first) else Modifier).weight(1f).height(150.dp),
+            Spacer(Modifier.height(20.dp))
+            items.chunked(4).forEachIndexed { r, row ->
+            if (r > 0) Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth().height(130.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                row.forEachIndexed { i, item ->
+                    Tile(item.onClick, (if (r == 0 && i == 0) Modifier.focusRequester(first) else Modifier).weight(1f).height(130.dp),
                         RoundedCornerShape(18.dp), colors = item.colors, focusColors = C.live) {
                         Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Icon(item.icon, 42.dp, Color.White, stroke = 1.6f)
@@ -180,6 +185,8 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
                         }
                     }
                 }
+                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
             }
             Spacer(Modifier.weight(1f))
             toast?.let { Label(it, 14.sp, Color(0xFF8FB3FF), FontWeight.SemiBold) }

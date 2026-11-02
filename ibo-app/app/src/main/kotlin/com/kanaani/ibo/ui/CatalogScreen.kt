@@ -50,8 +50,12 @@ data class Poster(val id: String, val name: String, val image: String?, val rati
 
 @Composable
 fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
-    val categories by produceState<List<Category>?>(null, x, s.series) {
+    val serverCategories by produceState<List<Category>?>(null, x, s.series) {
         value = if (s.series) x.showCategories() else x.movieCategories()
+    }
+    // Ordre choisi dans Réglages › Ordre des films / séries.
+    val categories = remember(serverCategories, com.kanaani.ibo.data.Store.categoryOrders, com.kanaani.ibo.data.Store.categoryNames) {
+        serverCategories?.let { com.kanaani.ibo.data.Store.arrange(if (s.series) "series" else "movie", it) }
     }
     LaunchedEffect(categories) {
         if (s.category == null) s.category = categories?.firstOrNull()?.id
