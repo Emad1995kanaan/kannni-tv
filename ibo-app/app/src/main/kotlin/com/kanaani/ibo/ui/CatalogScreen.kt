@@ -133,7 +133,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                             // « Tous » en tête de liste.
                             val fixed = listOf(Category(Screen.ALL, Str.all), Category(Screen.CONTINUE, Str.continueWatching),
                                 Category(Screen.LATEST, if (s.series) Str.latestSeries else Str.latestMovies))
-                            itemsIndexed(fixed + cats, key = { _, c -> c.id }) { i, c ->
+                            itemsIndexed(fixed + cats, key = { i, c -> c.id + "#" + i }) { i, c ->
                                 val selected = s.category == c.id
                                 val m = if (selected || (i == 0 && s.category == null)) Modifier.focusRequester(catFocus) else Modifier
                                 Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = -1; s.filter = ""; s.searching = false } },
@@ -160,7 +160,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             contentPadding = PaddingValues(top = 4.dp, bottom = 16.dp, start = 4.dp, end = 4.dp),
                         ) {
-                            itemsIndexed(list, key = { _, p -> p.id }) { i, p ->
+                            itemsIndexed(list, key = { i, p -> p.id + "#" + i }) { i, p ->
                                 val target = if (s.focusIndex >= 0) s.focusIndex.coerceIn(0, list.lastIndex) else 0
                                 val m = if (i == target) Modifier.focusRequester(gridFocus) else Modifier
                                 PosterCard(p, m.onFocusChanged { if (it.isFocused) s.focusIndex = i }) {

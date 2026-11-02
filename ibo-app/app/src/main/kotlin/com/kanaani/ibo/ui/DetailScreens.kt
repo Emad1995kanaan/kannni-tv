@@ -164,7 +164,7 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                     }
                 }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
-                    itemsIndexed(episodes, key = { _, e -> e.id }) { i, e ->
+                    itemsIndexed(episodes, key = { i, e -> e.id + "#" + i }) { i, e ->
                         val here = saved?.takeIf { it.episodeId == e.id }
                         Tile({
                             val w = Watch("series", show.id, show.name, show.poster, e.ext, e.id, e.season, e.number)

@@ -113,7 +113,7 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                     val cats = categories
                     if (cats == null) Loading() else LazyColumn(state = s.catState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         val fixed = listOf(Category(Screen.FAVORITES, "★ " + Str.favorites), Category(Screen.ALL, Str.all))
-                        itemsIndexed(fixed + cats, key = { _, c -> c.id }) { i, c ->
+                        itemsIndexed(fixed + cats, key = { i, c -> c.id + "#" + i }) { i, c ->
                             val selected = s.category == c.id
                             val m = if (i == 0) Modifier.focusRequester(catFocus) else Modifier
                             Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = 0; s.filter = ""; s.searching = false } },
@@ -134,7 +134,7 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                         list == null -> Loading()
                         list.isEmpty() -> Message(Str.empty)
                         else -> LazyColumn(state = s.listState, verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
-                            itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
+                            itemsIndexed(list, key = { i, c -> c.id + "#" + i }) { i, c ->
                                 val m = if (i == s.focusIndex.coerceIn(0, list.lastIndex)) Modifier.focusRequester(chFocus) else Modifier
                                 ChannelRow(c, i, s.playing?.id == c.id, m.onFocusChanged { if (it.isFocused) s.focusIndex = i }) { select(c, list, i) }
                             }

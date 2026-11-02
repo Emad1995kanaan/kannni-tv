@@ -129,7 +129,8 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
     @Suppress("UNCHECKED_CAST")
     private suspend fun <T : Any> cached(key: String, load: suspend () -> T?): T? {
         (cache[key] as? T)?.let { return it }
-        val v = load() ?: return null
+        // Réponse inattendue d'un serveur : pas de plantage, la liste reste simplement vide.
+        val v = try { load() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Throwable) { null } ?: return null
         cache[key] = v
         return v
     }
@@ -155,7 +156,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
         get(action)?.objects()?.mapNotNull { o ->
             val id = o.str("category_id") ?: return@mapNotNull null
             Category(id, o.str("category_name") ?: id)
-        }
+        }?.distinctBy { it.id } // doublons (même identifiant) : feraient planter les listes
     } ?: emptyList()
 
     suspend fun liveCategories() = categories("get_live_categories")
@@ -172,7 +173,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
         get("get_live_streams", extra)?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
             Channel(id, o.str("name") ?: id, o.str("stream_icon"), o.int("num") ?: 0, o.str("category_id"))
-        }
+        }?.distinctBy { it.id }
     } ?: emptyList()
 
     /** categoryId null = tous les films. */
@@ -184,7 +185,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
             val id = o.str("stream_id") ?: return@mapNotNull null
             Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"),
                 added = o.str("added")?.toLongOrNull() ?: 0)
-        }
+        }?.distinctBy { it.id }
     } ?: emptyList()
 
     /** categoryId null = toutes les séries. */
@@ -196,7 +197,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
             val id = o.str("series_id") ?: return@mapNotNull null
             Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"),
                 updated = o.str("last_modified")?.toLongOrNull() ?: 0)
-        }
+        }?.distinctBy { it.id }
     } ?: emptyList()
 
     /** Films les plus récemment ajoutés au serveur (toutes catégories). */
@@ -246,8 +247,8 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
                     image = info?.str("movie_image"),
                     duration = info?.str("duration"),
                 )
-            }.sortedBy { it.number }
-            if (eps.isNotEmpty()) seasons[season] = eps
+            }.distinctBy { it.id }.sortedBy { it.number }
+            if (eps.isNotEmpty()) seasons[season] = (seasons[season].orEmpty() + eps).distinctBy { it.id }.sortedBy { it.number }
         }
         val backdrop = (i["backdrop_path"] as? JsonArray)?.firstOrNull()?.let { (it as? JsonPrimitive)?.contentOrNull } ?: i.str("cover")
         ShowInfo(
