@@ -30,7 +30,9 @@ private fun Screens(onExit: () -> Unit) {
     val top = nav.top
     BackHandler { if (!nav.back()) onExit() }
     // Quitter le Direct ou un lecteur VOD vers un autre écran : la lecture s'arrête (sauf Direct ↔ plein écran).
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(top) {
+        keyboard?.hide() // le clavier ne reste jamais ouvert d'un écran à l'autre
         if (top !is Screen.Live && top !is Screen.Play) Playback.stop()
     }
     when (top) {

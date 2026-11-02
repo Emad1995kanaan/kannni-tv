@@ -56,11 +56,6 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
     val serverCategories by produceState<List<Category>?>(null, x) { value = x.liveCategories() }
     // Ordre choisi dans Réglages › Ordre des chaînes.
     val categories = remember(serverCategories, Store.categoryOrders, Store.categoryNames) { serverCategories?.let { Store.arrange("live", it) } }
-    // Pas de favoris : on ouvre directement la première catégorie.
-    LaunchedEffect(categories) {
-        val cats = categories ?: return@LaunchedEffect
-        if (s.category == Screen.FAVORITES && Store.favorites.none { it.kind == "live" }) s.category = cats.firstOrNull()?.id ?: Screen.ALL
-    }
     var reload by remember { mutableIntStateOf(0) }
     val favs = Store.favorites
     // Les favoris ne relancent le chargement que si on est DANS la catégorie Favoris.
@@ -119,7 +114,7 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                         itemsIndexed(fixed + cats, key = { _, c -> c.id }) { i, c ->
                             val selected = s.category == c.id
                             val m = if (i == 0) Modifier.focusRequester(catFocus) else Modifier
-                            Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = 0; s.filter = "" } },
+                            Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = 0; s.filter = ""; s.searching = false } },
                                 m.fillMaxWidth().height(38.dp), RoundedCornerShape(10.dp),
                                 colors = listOf(if (selected) C.cardHi else Color.Transparent), focusColors = C.live, focusScale = 1.02f) {
                                 Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
@@ -131,7 +126,7 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                 }
                 // 2) Chaînes
                 Column(Modifier.width(290.dp).fillMaxHeight().clip(RoundedCornerShape(14.dp)).background(C.panel).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Field(s.filter, { s.filter = it }, Str.search, Modifier.fillMaxWidth(), imeAction = androidx.compose.ui.text.input.ImeAction.Search)
+                    SearchBox(s.searching, { s.searching = it }, s.filter, { s.filter = it }, Modifier.fillMaxWidth())
                     val list = shown
                     when {
                         list == null -> Loading()

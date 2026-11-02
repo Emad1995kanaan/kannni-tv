@@ -19,20 +19,22 @@ import com.kanaani.ibo.data.Show
 sealed class Screen {
     object Home : Screen()
     class Live : Screen() {
-        var category by mutableStateOf<String?>(FAVORITES)
+        var category by mutableStateOf<String?>(ALL)
         var focusIndex by mutableIntStateOf(0)
         val catState = LazyListState()
         val listState = LazyListState()
         var filter by mutableStateOf("")
+        var searching by mutableStateOf(false)
         /** Chaîne affichée dans l'aperçu (un 2e appui ouvre le plein écran). */
         var playing by mutableStateOf<Channel?>(null)
     }
     class Catalog(val series: Boolean) : Screen() {
-        var category by mutableStateOf<String?>(null)
+        var category by mutableStateOf<String?>(ALL)
         var focusIndex by mutableIntStateOf(-1)
         val catState = LazyListState()
         val gridState = LazyGridState()
         var filter by mutableStateOf("")
+        var searching by mutableStateOf(false)
     }
     class MovieDetail(val movie: Movie) : Screen()
     class ShowDetail(val show: Show) : Screen() {

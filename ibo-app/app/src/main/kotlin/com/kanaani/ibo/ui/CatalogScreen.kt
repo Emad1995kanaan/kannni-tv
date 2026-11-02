@@ -57,9 +57,6 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
     val categories = remember(serverCategories, com.kanaani.ibo.data.Store.categoryOrders, com.kanaani.ibo.data.Store.categoryNames) {
         serverCategories?.let { com.kanaani.ibo.data.Store.arrange(if (s.series) "series" else "movie", it) }
     }
-    LaunchedEffect(categories) {
-        if (s.category == null) s.category = categories?.firstOrNull()?.id
-    }
     var reload by remember { mutableIntStateOf(0) }
     val items by produceState<List<Poster>?>(null, s.category, reload) {
         value = null
@@ -99,7 +96,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                             itemsIndexed(listOf(Category(Screen.ALL, Str.all)) + cats, key = { _, c -> c.id }) { i, c ->
                                 val selected = s.category == c.id
                                 val m = if (selected || (i == 0 && s.category == null)) Modifier.focusRequester(catFocus) else Modifier
-                                Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = -1; s.filter = "" } },
+                                Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = -1; s.filter = ""; s.searching = false } },
                                     m.fillMaxWidth().height(38.dp), RoundedCornerShape(10.dp),
                                     colors = listOf(if (selected) C.cardHi else Color.Transparent), focusColors = C.live, focusScale = 1.02f) {
                                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
@@ -111,7 +108,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                     }
                 }
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Field(s.filter, { s.filter = it }, Str.search, Modifier.width(300.dp), imeAction = androidx.compose.ui.text.input.ImeAction.Search)
+                    SearchBox(s.searching, { s.searching = it }, s.filter, { s.filter = it }, Modifier.width(320.dp))
                     val list = shown
                     when {
                         list == null -> Loading()

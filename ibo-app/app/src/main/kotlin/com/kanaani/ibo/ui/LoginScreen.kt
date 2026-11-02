@@ -47,6 +47,9 @@ fun LoginScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val userFocus = remember { FocusRequester() }
+    // Clavier numérique par défaut (identifiants Xtream habituels) ; « ABC » repasse au clavier complet.
+    var numeric by remember { mutableStateOf(true) }
+    val keyboardCtl = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     InitialFocus(userFocus)
 
     val submit: () -> Unit = submit@{
@@ -96,8 +99,17 @@ fun LoginScreen() {
             ) {
                 Text(Str.signIn, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = if (keyboard) 18.sp else 26.sp, maxLines = 1)
                 if (!keyboard) Label(Str.signInHint, 12.sp, C.text2, lines = 2)
-                Field(user, { user = it; error = null }, Str.username, Modifier.fillMaxWidth(), focusRequester = userFocus)
-                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = true, imeAction = ImeAction.Done, onDone = submit)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Field(user, { user = it; error = null }, Str.username, Modifier.weight(1f), focusRequester = userFocus, numeric = numeric)
+                    Spacer(Modifier.width(8.dp))
+                    Tile({ keyboardCtl?.hide(); numeric = !numeric }, Modifier.width(64.dp).height(46.dp), RoundedCornerShape(12.dp),
+                        colors = listOf(C.card), focusColors = C.live, focusScale = 1.04f) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Label(if (numeric) Str.abcKeyboard else Str.numKeyboard, 14.sp, weight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = true, imeAction = ImeAction.Done, numeric = numeric, onDone = submit)
                 error?.let { Label(it, 13.sp, C.error, FontWeight.SemiBold, lines = 3) }
                 Tile(submit, Modifier.fillMaxWidth().height(48.dp), RoundedCornerShape(12.dp), colors = C.live, focusScale = 1.03f) { f ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

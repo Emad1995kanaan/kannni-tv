@@ -189,6 +189,7 @@ fun Field(
     password: Boolean = false,
     focusRequester: FocusRequester? = null,
     imeAction: ImeAction = ImeAction.Next,
+    numeric: Boolean = false,
     onDone: () -> Unit = {},
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -204,7 +205,12 @@ fun Field(
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         // Télécommande : le clavier ne s'ouvre PAS en passant sur le champ (il bloquerait la navigation), seulement sur OK.
         keyboardOptions = KeyboardOptions(
-            keyboardType = if (password) KeyboardType.Password else KeyboardType.Text,
+            keyboardType = when {
+                numeric && password -> KeyboardType.NumberPassword
+                numeric -> KeyboardType.Number
+                password -> KeyboardType.Password
+                else -> KeyboardType.Text
+            },
             imeAction = imeAction,
             autoCorrectEnabled = false,
             showKeyboardOnFocus = false,
@@ -228,6 +234,36 @@ fun Field(
             }
         },
     )
+}
+
+/**
+ * Recherche « à la demande » : un simple bouton 🔍 tant qu'on ne l'a pas pressé (aucun clavier en arrivant sur
+ * l'écran) ; pressé, il devient un champ avec le clavier ouvert, et ✕ ferme la recherche et vide le filtre.
+ */
+@Composable
+fun SearchBox(open: Boolean, onOpen: (Boolean) -> Unit, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    if (!open) {
+        Tile({ onOpen(true) }, modifier.height(40.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.03f) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Search, 18.dp, Color.White)
+                Spacer(Modifier.width(10.dp))
+                Label(Str.searchButton, 14.sp, C.text2, FontWeight.SemiBold)
+            }
+        }
+        return
+    }
+    val field = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        repeat(10) { delay(60); if (runCatching { field.requestFocus() }.getOrDefault(false)) { keyboard?.show(); return@LaunchedEffect } }
+    }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Field(value, onChange, Str.search, Modifier.weight(1f), focusRequester = field, imeAction = ImeAction.Search, onDone = { keyboard?.hide() })
+        Spacer(Modifier.width(6.dp))
+        Tile({ keyboard?.hide(); onChange(""); onOpen(false) }, Modifier.size(40.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label("✕", 15.sp, weight = FontWeight.Bold) }
+        }
+    }
 }
 
 /** Boîte de dialogue simple : titre + liste de choix. */
