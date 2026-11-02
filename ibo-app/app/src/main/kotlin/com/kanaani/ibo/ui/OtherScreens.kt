@@ -155,6 +155,7 @@ private data class SettingItem(val label: String, val icon: String, val colors: 
 fun SettingsScreen(nav: Navigator, x: Xtream) {
     var dialog by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(toast) { if (toast != null) { kotlinx.coroutines.delay(2_500); toast = null } }
     val first = remember { FocusRequester() }
     InitialFocus(first)
@@ -165,6 +166,7 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         SettingItem(Str.orderMovies, Icons.Movies) { nav.go(Screen.Reorder("movie")) },
         SettingItem(Str.orderSeries, Icons.Series) { nav.go(Screen.Reorder("series")) },
         SettingItem(Str.refresh, Icons.Refresh) { x.clearCache(); AccountCache.value = null; toast = Str.refreshed },
+        SettingItem(Str.checkUpdates, Icons.Refresh) { scope.launch { com.kanaani.ibo.data.Updater.check(manual = true) } },
         SettingItem(Str.about, Icons.Info) { dialog = "about" },
         SettingItem(Str.logout, Icons.Logout, C.danger) { dialog = "logout" },
     )

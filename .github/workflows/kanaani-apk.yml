@@ -88,10 +88,18 @@ jobs:
           cp out/ibo/Kanaani-IBO-*-universal.apk release/Kanaani-IBO.apk
           cp out/ibo/Kanaani-IBO-*-arm64-v8a.apk release/Kanaani-IBO-arm64-v8a.apk
           cp out/ibo/Kanaani-IBO-*-armeabi-v7a.apk release/Kanaani-IBO-armeabi-v7a.apk
+          # update.json : lu par l'application pour proposer la mise à jour (versionCode = x*10000 + y*100 + z).
+          IFS=. read -r MA MI PA < VERSION
+          CODE=$((MA * 10000 + MI * 100 + PA))
+          SHA=$(sha256sum release/Kanaani-IBO.apk | cut -d' ' -f1)
+          SIZE=$(stat -c %s release/Kanaani-IBO.apk)
+          printf '{"versionCode":"%s","versionName":"%s","url":"https://github.com/%s/releases/download/%s/Kanaani-IBO.apk","sha256":"%s","size":"%s","notes":""}\n' \
+            "$CODE" "$(cat VERSION)" "$GITHUB_REPOSITORY" "$TAG" "$SHA" "$SIZE" > release/update.json
+          cat release/update.json
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" release/*.apk release/update.json --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" release/*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            gh release create "$TAG" release/*.apk release/update.json --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
               --title "Kanaani $TAG" \
               --notes "تطبيق كنعاني. للتحميل المباشر: Kanaani-IBO.apk (بيشتغل على كل الأجهزة)." \
               --latest

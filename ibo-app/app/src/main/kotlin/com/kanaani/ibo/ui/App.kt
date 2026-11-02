@@ -4,12 +4,23 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.fillMaxSize
 import com.kanaani.ibo.data.Store
 import com.kanaani.ibo.player.Playback
 
 /** Racine : connexion tant qu'aucun abonnement n'est enregistré, puis la pile d'écrans. */
 @Composable
 fun App(onExit: () -> Unit) {
+    // Mise à jour : vérifiée à chaque ouverture ; la fenêtre passe au-dessus de tous les écrans.
+    LaunchedEffect(Unit) { com.kanaani.ibo.data.Updater.check() }
+    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+        Screens(onExit)
+        UpdateDialog()
+    }
+}
+
+@Composable
+private fun Screens(onExit: () -> Unit) {
     val session = Store.session
     if (session == null) {
         LoginScreen()

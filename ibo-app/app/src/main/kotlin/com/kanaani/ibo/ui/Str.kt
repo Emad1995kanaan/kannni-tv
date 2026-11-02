@@ -112,5 +112,26 @@ object Str {
     val about get() = t("About", "حول التطبيق", "אודות")
     val version get() = t("Version", "الإصدار", "גרסה")
     val cancel get() = t("Cancel", "إلغاء", "ביטול")
+
+    // Mises à jour
+    val checkUpdates get() = t("Check for updates", "التحقق من التحديثات", "בדיקת עדכונים")
+    val updateAvailable get() = t("New update available", "تحديث جديد متوفر", "עדכון חדש זמין")
+    val upToDate get() = t("You have the latest version", "عندك آخر إصدار", "יש לכם את הגרסה האחרונה")
+    val updateFailed get() = t("Update failed", "تعذّر التحديث", "העדכון נכשל")
+    val current get() = t("current", "الحالي", "נוכחית")
+    val updateNow get() = t("Update now", "تحديث الآن", "עדכון עכשיו")
+    val later get() = t("Later", "لاحقاً", "אחר כך")
+    val install get() = t("Install", "تثبيت", "התקנה")
+    val downloading get() = t("Downloading update…", "جارٍ تنزيل التحديث…", "מוריד עדכון…")
+    val installHint get() = t(
+        "If Android asks, allow Kanaani to install apps, then press Install again.",
+        "إذا طلب أندرويد، اسمح لـ Kanaani بتثبيت التطبيقات، بعدين اضغط تثبيت مرة ثانية.",
+        "אם אנדרואיד מבקש, אפשרו ל-Kanaani להתקין אפליקציות ולחצו שוב התקנה.")
+    val problemDownload get() = t("Download failed. Check the internet connection and try again.", "فشل التنزيل. تأكد من الإنترنت وجرّب مرة ثانية.", "ההורדה נכשלה. בדקו את האינטרנט ונסו שוב.")
+    val problemCorrupt get() = t("The downloaded file is damaged. Try again.", "الملف اللي نزل فيه خلل. جرّب مرة ثانية.", "הקובץ שהורד פגום. נסו שוב.")
+    val problemOld get() = t("This update is not newer than the installed version.", "هاد التحديث مش أحدث من النسخة المنزّلة.", "העדכון הזה אינו חדש יותר מהגרסה המותקנת.")
+    val problemSignature get() = t("This update is signed differently. Uninstall the app once, then install it from the download link.", "هاد التحديث موقّع بشكل مختلف. احذف التطبيق مرة وحدة ونزّله من رابط التحميل.", "העדכון חתום אחרת. הסירו את האפליקציה פעם אחת והתקינו מקישור ההורדה.")
+    val problemInstall get() = t("Android could not open the installer.", "أندرويد ما قدر يفتح شاشة التثبيت.", "אנדרואיד לא הצליח לפתוח את ההתקנה.")
+    val retryUpdate get() = t("Try again", "جرّب مرة ثانية", "נסו שוב")
     val ok get() = t("OK", "موافق", "אישור")
 }
