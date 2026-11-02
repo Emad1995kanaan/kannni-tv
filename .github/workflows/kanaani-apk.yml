@@ -92,8 +92,18 @@ jobs:
           CODE=$((MA * 10000 + MI * 100 + PA))
           SHA=$(sha256sum release/Kanaani-IBO.apk | cut -d' ' -f1)
           SIZE=$(stat -c %s release/Kanaani-IBO.apk)
-          printf '{"versionCode":"%s","versionName":"%s","url":"https://github.com/%s/releases/download/%s/Kanaani-IBO.apk","sha256":"%s","size":"%s","notes":""}\n' \
-            "$CODE" "$(cat VERSION)" "$GITHUB_REPOSITORY" "$TAG" "$SHA" "$SIZE" > release/update.json
+          # ملاحظات الإصدار (بتطلع للزبون بنافذة التحديث): ملف ibo-app/update-notes.txt
+          CODE="$CODE" SHA="$SHA" SIZE="$SIZE" TAG="$TAG" python3 - <<'PY'
+          import json, os
+          v = open("VERSION").read().strip()
+          notes = open("ibo-app/update-notes.txt", encoding="utf-8").read().strip() if os.path.exists("ibo-app/update-notes.txt") else ""
+          data = {
+              "versionCode": os.environ["CODE"], "versionName": v,
+              "url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{os.environ['TAG']}/Kanaani-IBO.apk",
+              "sha256": os.environ["SHA"], "size": os.environ["SIZE"], "notes": notes,
+          }
+          open("release/update.json", "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False))
+          PY
           cat release/update.json
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" release/Kanaani-IBO.apk release/update.json --repo "$GITHUB_REPOSITORY" --clobber
