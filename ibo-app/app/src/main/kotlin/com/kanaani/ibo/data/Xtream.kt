@@ -93,23 +93,38 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
         return if (action == null) base else "$base&action=$action$extra"
     }
 
-    /** Appel API avec bascule : si le serveur ne répond pas (réseau, erreur HTTP, réponse illisible), on passe au suivant. */
+    /**
+     * Appel API avec bascule : on passe au serveur suivant si celui-ci ne répond pas (réseau, erreur HTTP, réponse
+     * illisible) OU refuse le compte (identifiants inconnus, compte expiré / désactivé : le compte peut n'exister que
+     * sur l'autre serveur). Si tous refusent, on rend le premier refus (message « identifiants » / « expiré »).
+     */
     private suspend fun get(action: String?, extra: String = ""): JsonElement? = withContext(Dispatchers.IO) {
         val first = if (!primaryTried) hosts.first() else host
         primaryTried = true
+        var refused: JsonElement? = null
         for (h in listOf(first) + hosts.filter { it != first }) {
             val res = runCatching {
                 Http.api.newCall(Request.Builder().url(url(h, action, extra)).build()).execute().use { r ->
                     if (!r.isSuccessful) null else json.parseToJsonElement(r.body.string())
                 }
-            }.getOrNull()
-            if (res != null) {
-                if (h != host) { host = h; Store.rememberHost(h) }
-                return@withContext res
-            }
+            }.getOrNull() ?: continue
+            if (refuses(res, account = action == null)) { if (refused == null) refused = res; continue }
+            if (h != host) { host = h; Store.rememberHost(h) }
+            return@withContext res
         }
-        null
+        refused
     }
+
+    /** Réponse de refus : « auth » à 0, ou (infos du compte) statut autre qu'actif. */
+    private fun refuses(res: JsonElement, account: Boolean): Boolean {
+        val ui = (res as? JsonObject)?.get("user_info") as? JsonObject ?: return false
+        if (ui.str("auth") == "0") return true
+        return account && ui.str("status")?.equals("Active", ignoreCase = true) == false
+    }
+
+    /** Même adresse de flux sur les autres serveurs (pour la bascule du lecteur). */
+    fun alternates(streamUrl: String): List<String> =
+        if (!streamUrl.startsWith(host)) emptyList() else hosts.filter { it != host }.map { it + streamUrl.removePrefix(host) }
 
     @Suppress("UNCHECKED_CAST")
     private suspend fun <T : Any> cached(key: String, load: suspend () -> T?): T? {

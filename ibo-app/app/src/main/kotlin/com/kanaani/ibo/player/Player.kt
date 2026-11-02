@@ -33,6 +33,13 @@ object Playback {
         private set
 
     private var triedHls = false
+    /** Adresse réellement chargée (HLS de secours, autre serveur…) ; [current] garde l'adresse demandée. */
+    private var attempt: String? = null
+    private var attemptStart = 0L
+    /** Mêmes flux sur les autres serveurs (principal / secours), essayés si celui-ci échoue. */
+    private val alternates = ArrayDeque<String>()
+    /** Fourni par la session : adresses équivalentes sur les autres serveurs. */
+    var alternatesFor: ((String) -> List<String>)? = null
 
     fun player(ctx: Context): ExoPlayer = exo ?: build(ctx.applicationContext).also { exo = it }
 
@@ -49,12 +56,21 @@ object Playback {
                 if (state == Player.STATE_READY) error = false
             }
             override fun onPlayerError(e: PlaybackException) {
-                // Direct en .ts refusé : on retente une fois en HLS (.m3u8), que beaucoup de serveurs servent aussi.
-                val url = current
-                if (url != null && url.endsWith(".ts") && !triedHls) {
-                    triedHls = true
-                    start(url.removeSuffix(".ts") + ".m3u8", keepFallbackState = true)
-                } else error = true
+                // 1) Direct en .ts refusé : on retente une fois en HLS (.m3u8), que beaucoup de serveurs servent aussi.
+                // 2) Puis le même flux sur l'autre serveur (secours / principal), avant d'afficher l'erreur.
+                val url = attempt
+                val pos = exo?.currentPosition?.takeIf { it > 0 } ?: attemptStart
+                when {
+                    url != null && url.endsWith(".ts") && !triedHls -> {
+                        triedHls = true
+                        start(url.removeSuffix(".ts") + ".m3u8", startMs = pos, keepFallbackState = true)
+                    }
+                    alternates.isNotEmpty() -> {
+                        triedHls = false
+                        start(alternates.removeFirst(), startMs = pos, keepFallbackState = true)
+                    }
+                    else -> error = true
+                }
             }
         })
         return p
@@ -65,12 +81,16 @@ object Playback {
         player(ctx)
         if (url == current && !error) { exo?.playWhenReady = true; return }
         triedHls = false
+        alternates.clear()
+        alternatesFor?.invoke(url)?.let { alternates.addAll(it) }
         start(url, startMs = startMs)
     }
 
     private fun start(url: String, startMs: Long = 0, keepFallbackState: Boolean = false) {
         val p = exo ?: return
         if (!keepFallbackState) current = url
+        attempt = url
+        attemptStart = startMs
         error = false
         ended = false
         val item = MediaItem.Builder().setUri(url).apply { if (url.endsWith(".m3u8")) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()

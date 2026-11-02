@@ -30,6 +30,8 @@ private fun Screens(onExit: () -> Unit) {
         return
     }
     val nav = remember(session) { Navigator() }
+    // Lecteur : si un flux échoue sur ce serveur, il essaie le même flux sur l'autre (principal / secours).
+    Playback.alternatesFor = { u -> session.alternates(u) }
     val top = nav.top
     BackHandler { if (!nav.back()) onExit() }
     // Quitter le Direct ou un lecteur VOD vers un autre écran : la lecture s'arrête (sauf Direct ↔ plein écran).
