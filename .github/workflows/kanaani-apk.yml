@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     # تغيير الإعلانات ما بيحتاج بناء جديد
-    paths-ignore: ["ads/**"]
+    paths-ignore: ["ads/**", "i18n/**"]
   workflow_dispatch:
 
 permissions:

@@ -77,7 +77,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
         value = if (s.series) x.showCategories() else x.movieCategories()
     }
     // Ordre choisi dans Réglages › Ordre des films / séries.
-    val categories = remember(serverCategories, com.kanaani.ibo.data.Store.categoryOrders, com.kanaani.ibo.data.Store.categoryNames, com.kanaani.ibo.data.Store.hiddenCategories) {
+    val categories = remember(serverCategories, com.kanaani.ibo.data.Store.categoryOrders, com.kanaani.ibo.data.Store.categoryNames, com.kanaani.ibo.data.Store.hiddenCategories, com.kanaani.ibo.data.Store.language, com.kanaani.ibo.data.Translations.he) {
         serverCategories?.let { com.kanaani.ibo.data.Store.arrange(if (s.series) "series" else "movie", it) }
     }
     var reload by remember { mutableIntStateOf(0) }

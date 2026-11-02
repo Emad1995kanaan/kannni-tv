@@ -86,6 +86,7 @@ object Store {
 
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("kanaani", Context.MODE_PRIVATE)
+        Translations.init(ctx)
         language = sp.getString("lang", "ar") ?: "ar"
         val u = sp.getString("user", null)
         val p = sp.getString("pass", null)
@@ -153,7 +154,8 @@ object Store {
     fun arrange(kind: String, list: List<Category>): List<Category> {
         val names = categoryNames[kind].orEmpty()
         val hidden = hiddenCategories[kind].orEmpty()
-        return ordered(kind, list.filterNot { it.id in hidden }) { it.id }.map { c -> names[c.id]?.let { c.copy(name = it) } ?: c }
+        // Nom choisi par l'utilisateur, sinon traduction (hébreu), sinon nom du serveur.
+        return ordered(kind, list.filterNot { it.id in hidden }) { it.id }.map { c -> c.copy(name = names[c.id] ?: Translations.category(c.name)) }
     }
 
     private fun decodeNames(raw: String?): Map<String, String> = runCatching {

@@ -82,7 +82,7 @@ fun ReorderScreen(x: Xtream, s: Screen.Reorder) {
     var focusedId by remember { mutableStateOf<String?>(null) }
     fun targets(): Set<String> = selected.ifEmpty { setOfNotNull(focusedId) }
 
-    fun nameOf(id: String) = Store.categoryNames[s.kind]?.get(id) ?: originals[id] ?: id
+    fun nameOf(id: String) = Store.categoryNames[s.kind]?.get(id) ?: originals[id]?.let { com.kanaani.ibo.data.Translations.category(it) } ?: id
 
     fun commit(newOrder: List<String>, focusOn: String? = null) {
         order = newOrder

@@ -74,6 +74,10 @@ private fun JsonElement?.objects(): List<JsonObject> = when (this) {
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
+/** « AM | beIN Sports 1 | HD » → « beIN Sports 1 | HD » : préfixe du fournisseur retiré des noms de chaînes. */
+private val channelPrefix = Regex("""^\s*AM\s*\|\s*""")
+fun cleanChannel(name: String): String = name.replace(channelPrefix, "").ifBlank { name }
+
 /**
  * API Xtream Codes, chargée À LA DEMANDE (comme IBO Player) : rien n'est téléchargé d'avance ; chaque catégorie est
  * lue au moment où on l'ouvre puis gardée en mémoire pour la session.
@@ -173,7 +177,7 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
         val extra = categoryId?.let { "&category_id=${enc(it)}" } ?: ""
         get("get_live_streams", extra)?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
-            Channel(id, o.str("name") ?: id, o.str("stream_icon"), o.int("num") ?: 0, o.str("category_id"))
+            Channel(id, cleanChannel(o.str("name") ?: id), o.str("stream_icon"), o.int("num") ?: 0, o.str("category_id"))
         }?.distinctBy { it.id }
     } ?: emptyList()
 

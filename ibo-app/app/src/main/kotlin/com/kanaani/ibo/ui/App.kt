@@ -16,6 +16,7 @@ fun App(onExit: () -> Unit) {
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Updater.check() }
     // Messages instantanés (ntfy) : abonnement tant que l'application est ouverte.
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Messages.run() }
+    LaunchedEffect(Unit) { com.kanaani.ibo.data.Translations.refresh() }
     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
         Screens(onExit)
         UpdateDialog()
