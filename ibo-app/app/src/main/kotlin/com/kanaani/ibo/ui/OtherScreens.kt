@@ -156,6 +156,9 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
     var dialog by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var aboutTaps by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var aboutLast by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     LaunchedEffect(toast) { if (toast != null) { kotlinx.coroutines.delay(2_500); toast = null } }
     val first = remember { FocusRequester() }
     InitialFocus(first)
@@ -168,7 +171,17 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         SettingItem(Str.orderSeries, Icons.Series) { nav.go(Screen.Reorder("series")) },
         SettingItem(Str.refresh, Icons.Refresh) { x.clearCache(); AccountCache.value = null; toast = Str.refreshed },
         SettingItem(Str.checkUpdates, Icons.Refresh) { scope.launch { com.kanaani.ibo.data.Updater.check(manual = true) } },
-        SettingItem(Str.about, Icons.Info) { dialog = "about" },
+        SettingItem(Str.about, Icons.Info) {
+            // Outil caché : 5 appuis rapides sur « À propos » = export des listes (préparation des traductions).
+            val t = System.currentTimeMillis()
+            aboutTaps = if (t - aboutLast < 1_500) aboutTaps + 1 else 1
+            aboutLast = t
+            if (aboutTaps >= 5) {
+                aboutTaps = 0
+                toast = Str.loading
+                scope.launch { toast = if (com.kanaani.ibo.data.Export.lists(ctx, x)) null else Str.playError }
+            } else toast = "${com.kanaani.ibo.Brand.name} · ${Str.version} ${BuildConfig.VERSION_NAME}"
+        },
         SettingItem(Str.logout, Icons.Logout, C.danger) { dialog = "logout" },
     )
     Backdrop {
