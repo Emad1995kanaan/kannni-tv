@@ -60,8 +60,9 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
     val items by produceState<List<Poster>?>(null, s.category, reload) {
         value = null
         val c = s.category ?: run { value = emptyList(); return@produceState }
-        value = if (s.series) x.shows(c).map { Poster(it.id, it.name, it.poster, it.rating, show = it) }
-        else x.movies(c).map { Poster(it.id, it.name, it.poster, it.rating, movie = it) }
+        val cat = if (c == Screen.ALL) null else c
+        value = if (s.series) x.shows(cat).map { Poster(it.id, it.name, it.poster, it.rating, show = it) }
+        else x.movies(cat).map { Poster(it.id, it.name, it.poster, it.rating, movie = it) }
     }
     val shown = remember(items, s.filter) {
         val q = s.filter.trim()
@@ -90,7 +91,8 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                         cats == null -> Loading()
                         cats.isEmpty() -> Message(Str.empty)
                         else -> LazyColumn(state = s.catState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            itemsIndexed(cats, key = { _, c -> c.id }) { i, c ->
+                            // « Tous » en tête de liste.
+                            itemsIndexed(listOf(Category(Screen.ALL, Str.all)) + cats, key = { _, c -> c.id }) { i, c ->
                                 val selected = s.category == c.id
                                 val m = if (selected || (i == 0 && s.category == null)) Modifier.focusRequester(catFocus) else Modifier
                                 Tile({ if (s.category != c.id) { s.category = c.id; s.focusIndex = -1; s.filter = "" } },

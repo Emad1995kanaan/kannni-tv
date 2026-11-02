@@ -134,15 +134,17 @@ class Xtream(val host: String, val username: String, val password: String) {
         }
     } ?: emptyList()
 
-    suspend fun movies(categoryId: String): List<Movie> = cached("vod:$categoryId") {
-        get(url("get_vod_streams", "&category_id=${enc(categoryId)}"))?.objects()?.mapNotNull { o ->
+    /** categoryId null = tous les films. */
+    suspend fun movies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
+        get(url("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("stream_id") ?: return@mapNotNull null
             Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"))
         }
     } ?: emptyList()
 
-    suspend fun shows(categoryId: String): List<Show> = cached("series:$categoryId") {
-        get(url("get_series", "&category_id=${enc(categoryId)}"))?.objects()?.mapNotNull { o ->
+    /** categoryId null = toutes les séries. */
+    suspend fun shows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
+        get(url("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: ""))?.objects()?.mapNotNull { o ->
             val id = o.str("series_id") ?: return@mapNotNull null
             Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"))
         }

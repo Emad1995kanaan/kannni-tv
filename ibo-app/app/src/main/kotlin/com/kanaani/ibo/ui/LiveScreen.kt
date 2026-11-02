@@ -63,13 +63,18 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
     val favs = Store.favorites
     // Les favoris ne relancent le chargement que si on est DANS la catégorie Favoris.
     val favKey: Any = if (s.category == Screen.FAVORITES) favs else Unit
-    val channels by produceState<List<Channel>?>(null, s.category, reload, favKey) {
+    val channels by produceState<List<Channel>?>(null, s.category, reload, favKey, categories) {
         value = null
         value = when (val c = s.category) {
             null -> emptyList()
             Screen.FAVORITES -> favs.filter { it.kind == "live" }.mapIndexed { i, f -> Channel(f.id, f.name, f.image, i + 1, null) }
             Screen.ALL -> x.channels(null)
-            else -> x.channels(c)
+            else -> {
+                val list = x.channels(c)
+                // Catégorie israélienne : sport puis info, chaque chaîne de la qualité normale à la 4K.
+                val name = categories?.firstOrNull { it.id == c }?.name
+                if (com.kanaani.ibo.data.ChannelOrder.isIsraeli(name)) com.kanaani.ibo.data.ChannelOrder.sortIsraeli(list) else list
+            }
         }
     }
     val shown = remember(channels, s.filter) {
