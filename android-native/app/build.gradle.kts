@@ -178,6 +178,8 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        // Nom de l'app généré depuis brand.properties (resValue).
+        resValues = true
     }
 
     // src/main/kotlin et src/test/kotlin sont des dossiers source par défaut (Kotlin intégré d'AGP 9) : rien à déclarer.
