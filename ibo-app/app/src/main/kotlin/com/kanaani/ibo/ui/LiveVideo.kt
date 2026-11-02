@@ -43,7 +43,8 @@ fun LiveVideoHost(nav: Navigator, x: Xtream, top: Screen) {
     if (!full && !preview) return
     val density = LocalDensity.current
     val b = LiveVideo.previewBounds
-    Box(Modifier.fillMaxSize()) {
+    // Coin haut-GAUCHE absolu (pas « début » : en arabe / hébreu le début est à droite).
+    Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.AbsoluteAlignment.TopLeft) {
         val frame = if (full) Modifier.fillMaxSize()
         else if (b == null) Modifier.size(0.dp)
         else with(density) {
