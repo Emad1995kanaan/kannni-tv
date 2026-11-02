@@ -23,6 +23,9 @@ val providerName = brand("BRAND_PROVIDER_NAME", appName)
 val updateUrl = brand("BRAND_UPDATE_URL", "")
 // ads.json des thèmes d'accueil (vide = pas de publicités).
 val adsUrl = brand("BRAND_ADS_URL", "")
+// Messages instantanés (ntfy) : serveur et sujet secret (vide = désactivé).
+val msgServer = brand("BRAND_MSG_SERVER", "https://ntfy.sh")
+val msgTopic = brand("BRAND_MSG_TOPIC", "")
 
 // Version : fichier VERSION à la racine du dépôt (x.y.z) → versionCode = x*10000 + y*100 + z.
 val versionName0: String = rootProject.file("../VERSION").readText().trim()
@@ -44,6 +47,8 @@ android {
         buildConfigField("String", "BRAND_PROVIDER_NAME", javaString(providerName))
         buildConfigField("String", "UPDATE_URL", javaString(updateUrl))
         buildConfigField("String", "ADS_URL", javaString(adsUrl))
+        buildConfigField("String", "MSG_SERVER", javaString(msgServer))
+        buildConfigField("String", "MSG_TOPIC", javaString(msgTopic))
     }
 
     signingConfigs {

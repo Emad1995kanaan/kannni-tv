@@ -14,6 +14,8 @@ import com.kanaani.ibo.player.Playback
 fun App(onExit: () -> Unit) {
     // Mise à jour : vérifiée à chaque ouverture ; la fenêtre passe au-dessus de tous les écrans.
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Updater.check() }
+    // Messages instantanés (ntfy) : abonnement tant que l'application est ouverte.
+    LaunchedEffect(Unit) { com.kanaani.ibo.data.Messages.run() }
     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
         Screens(onExit)
         UpdateDialog()
@@ -51,4 +53,5 @@ private fun Screens(onExit: () -> Unit) {
         Screen.Settings -> SettingsScreen(nav, session)
     }
     LiveVideoHost(nav, session, top)
+    MessageTicker(top)
 }
