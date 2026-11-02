@@ -196,7 +196,7 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         }
     }
     when (dialog) {
-        "theme" -> ChoiceDialog(Str.homeTheme, listOf(Str.themeClassic, Str.themeBillboard, Str.themeSidebar).mapIndexed { i, n ->
+        "theme" -> ChoiceDialog(Str.homeTheme, listOf(Str.themeClassic, Str.themeBillboard).mapIndexed { i, n ->
             (if (Store.homeTheme == i) "✓  $n" else n) to { Store.chooseHomeTheme(i); dialog = null }
         }) { dialog = null }
         "lang" -> ChoiceDialog(Str.language, Lang.entries.map { l -> l.label to { Store.chooseLanguage(l.code); dialog = null } }) { dialog = null }

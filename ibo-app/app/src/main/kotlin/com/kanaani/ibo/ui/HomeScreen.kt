@@ -58,7 +58,6 @@ fun HomeScreen(nav: Navigator, x: Xtream) {
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Ads.refresh() }
     when (com.kanaani.ibo.data.Store.homeTheme) {
         1 -> { BillboardHome(nav, now); return }
-        2 -> { SidebarHome(nav, x, now); return }
     }
     val first = remember { FocusRequester() }
     InitialFocus(first)
