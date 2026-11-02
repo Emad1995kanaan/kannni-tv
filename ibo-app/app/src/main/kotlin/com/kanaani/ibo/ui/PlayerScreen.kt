@@ -36,6 +36,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +112,13 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
     // Filet de sécurité : fin atteinte (durée inconnue, épisode court).
     LaunchedEffect(Playback.ended) { if (Playback.ended && next != null && !nextCancelled) goNext() }
 
+    // ── Format de l'image : adapter / remplir / zoom (bouton, touche jaune / Menu, pincement). ──
+    var aspectFlash by remember { mutableStateOf<String?>(null) }
+    var aspectTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(aspectTick) { if (aspectFlash != null) { delay(1_200); aspectFlash = null } }
+    fun setAspect(mode: Int) { Store.chooseAspect(mode); aspectFlash = Str.aspectName(Store.aspect); aspectTick++ }
+    fun cycleAspect() = setAspect(Store.aspect + 1)
+
     // ── VOD : ◀ / ▶ = −10 s / +10 s, OK = pause / lecture (avant que le lecteur ne prenne la touche). ──
     var seekFlash by remember { mutableStateOf<String?>(null) }
     var flashTick by remember { mutableIntStateOf(0) }
@@ -126,6 +138,7 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
                     if (down && e.repeatCount == 0) Playback.togglePause(); true
                 }
+                in ASPECT_KEYS -> { if (down && e.repeatCount == 0) cycleAspect(); true }
                 else -> false
             }
         }
@@ -147,6 +160,20 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            // Pincement à deux doigts : écarter = zoom (plein écran), rapprocher = image entière.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var scale = 1f
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        if (ev.changes.count { it.pressed } >= 2) scale *= ev.calculateZoom()
+                        if (ev.changes.none { it.pressed }) break
+                    }
+                    if (scale > 1.15f && Store.aspect != 2) setAspect(2)
+                    else if (scale < 0.87f && Store.aspect != 0) setAspect(0)
+                }
+            }
             .then(
                 if (s.live) Modifier
                     .focusRequester(focus)
@@ -156,6 +183,8 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
                             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { zap(+1); true }
                             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); true }
                             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_INFO -> { infoTick++; true }
+                            // ◀ ▶ (inutilisés en direct), touche jaune ou Menu : format de l'image.
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, in ASPECT_KEYS -> { cycleAspect(); infoTick++; true }
                             else -> false
                         }
                     }
@@ -164,6 +193,13 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
             ),
     ) {
         var playerView by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
+        LaunchedEffect(playerView, Store.aspect) {
+            playerView?.resizeMode = when (Store.aspect) {
+                1 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                2 -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
         var controlsVisible by remember { mutableStateOf(true) }
         PlayerSurface(controls = !s.live, onView = { v ->
             playerView = v
@@ -197,6 +233,20 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
             Box(Modifier.align(Alignment.Center).clip(RoundedCornerShape(40.dp)).background(Color(0x99000000)).padding(horizontal = 26.dp, vertical = 14.dp)) {
                 Label("$f s", 26.sp, weight = FontWeight.Bold)
             }
+        }
+
+        aspectFlash?.let { f ->
+            Box(Modifier.align(Alignment.Center).clip(RoundedCornerShape(40.dp)).background(Color(0x99000000)).padding(horizontal = 26.dp, vertical = 14.dp)) {
+                Label("⛶  $f", 22.sp, weight = FontWeight.Bold)
+            }
+        }
+        // Bouton format (tactile) : visible avec les contrôles (VOD) ou le bandeau (direct).
+        if ((!s.live && controlsVisible) || (s.live && showInfo)) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(18.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x99000000))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { cycleAspect(); if (s.live) infoTick++ }
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
+            ) { Label("⛶  " + Str.aspectName(Store.aspect), 14.sp, weight = FontWeight.Bold) }
         }
 
         // Épisode suivant : carte en bas à droite avec compte à rebours.
@@ -252,3 +302,6 @@ private fun ZapButton(label: String, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) { Label(label, 18.sp, weight = FontWeight.Bold) }
 }
+
+/** Touches qui changent le format de l'image (touche jaune, Menu, Zoom de la télécommande). */
+private val ASPECT_KEYS = setOf(KeyEvent.KEYCODE_PROG_YELLOW, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_TV_ZOOM_MODE)

@@ -3,6 +3,7 @@ package com.kanaani.ibo.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.kanaani.ibo.Brand
@@ -52,6 +53,15 @@ object Store {
     var watching by mutableStateOf<List<Watch>>(emptyList())
         private set
 
+    /** Format de l'image en plein écran : 0 = adapter, 1 = remplir (étirer), 2 = zoom (rogner). */
+    var aspect by mutableIntStateOf(0)
+        private set
+
+    fun chooseAspect(mode: Int) {
+        aspect = mode.mod(3)
+        sp.edit().putInt("aspect", aspect).apply()
+    }
+
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("kanaani", Context.MODE_PRIVATE)
         language = sp.getString("lang", "ar") ?: "ar"
@@ -64,6 +74,7 @@ object Store {
         }
         categoryNames = listOf("live", "movie", "series").associateWith { k -> decodeNames(sp.getString("names_$k", null)) }
         watching = decodeWatch(sp.getString("watching", null))
+        aspect = sp.getInt("aspect", 0).mod(3)
     }
 
     fun watchOf(kind: String, id: String): Watch? = watching.firstOrNull { it.kind == kind && it.id == id }

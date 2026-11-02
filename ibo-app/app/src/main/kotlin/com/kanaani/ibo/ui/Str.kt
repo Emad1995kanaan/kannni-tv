@@ -48,6 +48,10 @@ object Str {
 
     // Listes
     val all get() = t("All", "الكل", "הכול")
+    val aspectFit get() = t("Fit to screen", "ملاءمة الشاشة", "התאמה למסך")
+    val aspectFill get() = t("Full screen", "ملء الشاشة", "מסך מלא")
+    val aspectZoom get() = t("Zoom", "تكبير", "הגדלה")
+    fun aspectName(mode: Int) = when (mode) { 1 -> aspectFill; 2 -> aspectZoom; else -> aspectFit }
     val continueWatching get() = t("Continue watching", "استكمال المشاهدة", "המשך צפייה")
     val resume get() = t("Resume", "استكمال", "המשך")
     val fromStart get() = t("From the beginning", "من البداية", "מההתחלה")
