@@ -1,5 +1,5 @@
 {
   "interval": 10,
-  "billboard": [],
-  "sidebar": []
+  "billboard": ["billboard1.jpg"],
+  "sidebar": ["sidebar1.jpg"]
 }
