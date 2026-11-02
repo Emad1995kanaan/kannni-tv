@@ -339,7 +339,9 @@ fun Context.lockOrientation(landscape: Boolean?) {
     a.requestedOrientation = when (landscape) {
         true -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         false -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        null -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        // Version IBO : l'application reste en paysage en dehors du lecteur.
+        null -> if (com.ultratv.tv.nativeapp.Brand.iboHome) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
 }
 

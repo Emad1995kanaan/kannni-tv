@@ -53,7 +53,9 @@ val LocalUiWidthDp = compositionLocalOf { 0f }
 @Composable
 fun ProvideUiScale(content: @Composable () -> Unit) {
     val ctx = LocalContext.current
-    val tv = remember { isTelevision(ctx) }
+    val realTv = remember { isTelevision(ctx) }
+    // Version IBO : l'interface TV (tuiles, colonnes) partout, y compris sur téléphone (verrouillé en paysage).
+    val tv = realTv || com.ultratv.tv.nativeapp.Brand.iboHome
     val base = LocalDensity.current
     // BoxWithConstraints : taille réelle de la fenêtre, fiable dès la première
     // composition (LocalWindowInfo.containerSize renvoie 0 ici).
@@ -81,6 +83,7 @@ fun ProvideUiScale(content: @Composable () -> Unit) {
             LocalUiWidthDp provides wDp,
             // Mode tactile (téléphone / tablette) : tout ce qui n'est pas une TV. Jamais recalculé ailleurs.
             com.ultratv.tv.nativeapp.ui.mobile.LocalTouch provides !tv,
+            com.ultratv.tv.nativeapp.ui.mobile.LocalRealTouch provides !realTv,
             com.ultratv.tv.nativeapp.ui.mobile.LocalUiHeightDp provides hDp,
         ) { content() }
     }

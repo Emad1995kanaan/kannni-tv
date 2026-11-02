@@ -19,6 +19,12 @@ import com.ultratv.tv.nativeapp.ui.common.LocalUiWidthDp
  */
 val LocalTouch = staticCompositionLocalOf { false }
 
+/**
+ * Écran réellement tactile (téléphone / tablette), même quand l'interface TV est imposée (version IBO) :
+ * le lecteur s'en sert pour garder ses gestes et ses contrôles tactiles.
+ */
+val LocalRealTouch = staticCompositionLocalOf { false }
+
 /** Hauteur de la fenêtre en dp (téléphone en paysage < 480 dp). */
 val LocalUiHeightDp = androidx.compose.runtime.compositionLocalOf { 0f }
 

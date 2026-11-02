@@ -136,6 +136,14 @@ class MainActivity : ComponentActivity() {
             window.statusBarColor = android.graphics.Color.TRANSPARENT
             window.navigationBarColor = android.graphics.Color.TRANSPARENT
             if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
+            // Version IBO : interface TV sur téléphone, en paysage et plein écran (barres réaffichées d'un glissement).
+            if (com.ultratv.tv.nativeapp.Brand.iboHome) {
+                requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                    systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
         }
         RemoteLog.info("activity", "onCreate restoredState=${savedInstanceState != null}")
         handleDebugIntent(intent)
@@ -395,7 +403,8 @@ private fun Root(vm: AppViewModel = hiltViewModel()) {
                     val onboardingOverlays = androidx.compose.runtime.remember { com.ultratv.tv.nativeapp.ui.common.OverlayHost() }
                     Box(Modifier.fillMaxSize()) {
                         androidx.compose.runtime.CompositionLocalProvider(com.ultratv.tv.nativeapp.ui.common.LocalOverlayHost provides onboardingOverlays) {
-                            com.ultratv.tv.nativeapp.ui.onboarding.OnboardingWizard(
+                            if (com.ultratv.tv.nativeapp.Brand.iboHome && com.ultratv.tv.nativeapp.Brand.locked) com.ultratv.tv.nativeapp.ui.onboarding.IboLoginScreen()
+                            else com.ultratv.tv.nativeapp.ui.onboarding.OnboardingWizard(
                                 onOpenSettings = { /* user can re-enter Settings via sidebar */ },
                                 vm = onboarding,
                             )
@@ -644,7 +653,12 @@ private fun NavGraph(nav: androidx.navigation.NavHostController) {
                 onOpenSeries = { id -> nav.navigate(Routes.seriesDetail(id)) },
             )
         }
-        screen(Routes.SETTINGS) { SettingsScreen(onNavigate = { route -> nav.navigate(route) }) }
+        screen(Routes.SETTINGS) {
+            // Version IBO : grille de tuiles ; l'écran complet reste accessible via « Réglages avancés ».
+            if (com.ultratv.tv.nativeapp.Brand.iboHome) com.ultratv.tv.nativeapp.ui.settings.IboSettingsScreen(onNavigate = { route -> nav.navigate(route) })
+            else SettingsScreen(onNavigate = { route -> nav.navigate(route) })
+        }
+        screen("settings-advanced") { SettingsScreen(onNavigate = { route -> nav.navigate(route) }) }
         composable(
             route = Routes.PLAYER,
             arguments = listOf(
@@ -656,7 +670,10 @@ private fun NavGraph(nav: androidx.navigation.NavHostController) {
             val rawTitle = entry.arguments?.getString("title").orEmpty()
             val url = java.net.URLDecoder.decode(rawUrl, "UTF-8")
             val title = java.net.URLDecoder.decode(rawTitle, "UTF-8")
-            PlayerScreen(url = url, title = title, onBack = { nav.popBackStack() }, onHome = { nav.popBackStack(Routes.HOME, false) })
+            // Version IBO sur téléphone : le lecteur retrouve ses gestes et contrôles tactiles.
+            androidx.compose.runtime.CompositionLocalProvider(com.ultratv.tv.nativeapp.ui.mobile.LocalTouch provides com.ultratv.tv.nativeapp.ui.mobile.LocalRealTouch.current) {
+                PlayerScreen(url = url, title = title, onBack = { nav.popBackStack() }, onHome = { nav.popBackStack(Routes.HOME, false) })
+            }
         }
     }
 }

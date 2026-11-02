@@ -249,6 +249,8 @@ class UserPreferencesStore @Inject constructor(
     suspend fun setLastSyncAt(ms: Long) = update { it[Keys.lastSyncAt] = ms }
     suspend fun setWorkerBase(url: String) = update { it[Keys.workerBase] = url.trim() }
     suspend fun markOnboardingSeen() = update { it[Keys.seenOnboarding] = true }
+    /** Déconnexion (version IBO) : l'écran de connexion réapparaît. */
+    suspend fun resetOnboarding() = update { it[Keys.seenOnboarding] = false }
     suspend fun setLanguage(code: String) = update { it[Keys.language] = code }
     suspend fun setTimeZone(id: String) = update { it[Keys.timeZone] = id }
     suspend fun setExtraEpg(url: String) = update { it[Keys.extraEpg] = url }
