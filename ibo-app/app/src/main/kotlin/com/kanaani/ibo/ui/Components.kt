@@ -152,7 +152,12 @@ fun Header(title: String, modifier: Modifier = Modifier, trailing: @Composable (
     }
 }
 
-fun clock(now: Long): String = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(now))
+/** Heure sur 12 h (ex. 5:04 م / 5:04 PM). */
+fun clock(now: Long): String {
+    val pm = java.util.Calendar.getInstance().apply { timeInMillis = now }.get(java.util.Calendar.AM_PM) == java.util.Calendar.PM
+    val suffix = when (Str.lang) { Lang.AR -> if (pm) "م" else "ص"; else -> if (pm) "PM" else "AM" }
+    return java.text.SimpleDateFormat("h:mm", java.util.Locale.ROOT).format(java.util.Date(now)) + " " + suffix
+}
 
 fun date(ms: Long, pattern: String = "d MMM yyyy"): String =
     java.text.SimpleDateFormat(pattern, java.util.Locale.forLanguageTag(Str.lang.code + "-u-nu-latn")).format(java.util.Date(ms))
