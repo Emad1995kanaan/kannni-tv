@@ -57,6 +57,15 @@ object Store {
     var aspect by mutableIntStateOf(0)
         private set
 
+    /** Thème de l'accueil : 0 = classique, 1 = panneau publicitaire, 2 = menu latéral. */
+    var homeTheme by mutableIntStateOf(0)
+        private set
+
+    fun chooseHomeTheme(t: Int) {
+        homeTheme = t.coerceIn(0, 2)
+        sp.edit().putInt("home_theme", homeTheme).apply()
+    }
+
     fun chooseAspect(mode: Int) {
         aspect = mode.mod(3)
         sp.edit().putInt("aspect", aspect).apply()
@@ -75,6 +84,7 @@ object Store {
         categoryNames = listOf("live", "movie", "series").associateWith { k -> decodeNames(sp.getString("names_$k", null)) }
         watching = decodeWatch(sp.getString("watching", null))
         aspect = sp.getInt("aspect", 0).mod(3)
+        homeTheme = sp.getInt("home_theme", 0).coerceIn(0, 2)
     }
 
     fun watchOf(kind: String, id: String): Watch? = watching.firstOrNull { it.kind == kind && it.id == id }

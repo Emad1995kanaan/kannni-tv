@@ -18,6 +18,7 @@ object Icons {
     const val Live = "M2 8h20v12H2zM7 3l5 5 5-5"
     const val Movies = "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M4 15h4M16 9h4M16 15h4"
     const val Series = "M3 8h18v12H3zM8 4h8"
+    const val Grid = "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"
     const val Heart = "M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"
     const val Account = "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20a8 8 0 0 1 16 0"
     const val Settings = "M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M10 16v4"

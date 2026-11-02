@@ -4,6 +4,8 @@ name: Build Kanaani APK
 on:
   push:
     branches: [main]
+    # تغيير الإعلانات ما بيحتاج بناء جديد
+    paths-ignore: ["ads/**"]
   workflow_dispatch:
 
 permissions:

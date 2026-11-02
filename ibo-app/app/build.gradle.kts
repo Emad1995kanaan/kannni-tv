@@ -21,6 +21,8 @@ val host = brand("BRAND_HOST", "").trimEnd('/')
 val providerName = brand("BRAND_PROVIDER_NAME", appName)
 // Fichier update.json publié par la CI dans la dernière release (vide = pas de mises à jour intégrées).
 val updateUrl = brand("BRAND_UPDATE_URL", "")
+// ads.json des thèmes d'accueil (vide = pas de publicités).
+val adsUrl = brand("BRAND_ADS_URL", "")
 
 // Version : fichier VERSION à la racine du dépôt (x.y.z) → versionCode = x*10000 + y*100 + z.
 val versionName0: String = rootProject.file("../VERSION").readText().trim()
@@ -41,6 +43,7 @@ android {
         buildConfigField("String", "BRAND_HOST", javaString(host))
         buildConfigField("String", "BRAND_PROVIDER_NAME", javaString(providerName))
         buildConfigField("String", "UPDATE_URL", javaString(updateUrl))
+        buildConfigField("String", "ADS_URL", javaString(adsUrl))
     }
 
     signingConfigs {
