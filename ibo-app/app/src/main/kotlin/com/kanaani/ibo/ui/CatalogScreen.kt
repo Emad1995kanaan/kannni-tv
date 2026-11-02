@@ -41,12 +41,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.kanaani.ibo.data.Category
+import com.kanaani.ibo.data.Episode
+import com.kanaani.ibo.data.Store
+import com.kanaani.ibo.data.Watch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.kanaani.ibo.data.Movie
 import com.kanaani.ibo.data.Show
 import com.kanaani.ibo.data.Xtream
 
 /** Affiche commune aux films et aux séries. */
-data class Poster(val id: String, val name: String, val image: String?, val rating: String?, val movie: Movie? = null, val show: Show? = null)
+data class Poster(val id: String, val name: String, val image: String?, val rating: String?, val movie: Movie? = null, val show: Show? = null, val watch: Watch? = null)
+
+/** Lance la reprise d'un film / d'un épisode depuis « Continuer à regarder ». */
+fun resumeWatch(nav: Navigator, x: Xtream, scope: CoroutineScope, w: Watch) {
+    if (w.kind == "movie") {
+        val m = Movie(w.id, w.name, w.image, null, w.ext.ifEmpty { "mp4" }, null)
+        nav.go(Screen.Play(w.name, x.movieUrl(m), live = false, watch = w, startMs = w.pos))
+        return
+    }
+    scope.launch {
+        // Liste des épisodes de la saison pour garder l'enchaînement automatique.
+        val eps = runCatching { x.showInfo(w.id)?.seasons?.get(w.season) }.getOrNull().orEmpty()
+        val i = eps.indexOfFirst { it.id == w.episodeId }
+        val ep = eps.getOrNull(i) ?: Episode(w.episodeId, "", w.episode, w.season, w.ext.ifEmpty { "mp4" }, null, null, null)
+        nav.go(Screen.Play("${w.name} · ${Str.episode} ${ep.number}", x.episodeUrl(ep), live = false,
+            episodes = if (i >= 0) eps else emptyList(), index = maxOf(i, 0), watch = w.copy(ext = ep.ext), startMs = w.pos))
+    }
+}
 
 @Composable
 fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
@@ -63,13 +86,24 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
         val c = s.category ?: run { value = emptyList(); return@produceState }
         val cat = if (c == Screen.ALL) null else c
         value = when {
+            c == Screen.CONTINUE -> emptyList()
             c == Screen.LATEST && s.series -> x.latestShows().map { Poster(it.id, it.name, it.poster, it.rating, show = it) }
             c == Screen.LATEST -> x.latestMovies().map { Poster(it.id, it.name, it.poster, it.rating, movie = it) }
             s.series -> x.shows(cat).map { Poster(it.id, it.name, it.poster, it.rating, show = it) }
             else -> x.movies(cat).map { Poster(it.id, it.name, it.poster, it.rating, movie = it) }
         }
     }
-    val shown = remember(items, s.filter) {
+    val kind = if (s.series) "series" else "movie"
+    val continuing = remember(Store.watching, kind) {
+        Store.watching.filter { it.kind == kind }.map { w ->
+            val sub = if (w.kind == "series" && w.episode > 0) "${w.name} · S${w.season} E${w.episode}" else w.name
+            Poster(w.id, sub, w.image, null, watch = w)
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val source = if (s.category == Screen.CONTINUE) continuing else items
+    val shown = remember(source, s.filter) {
+        val items = source
         val q = s.filter.trim()
         items?.let { list -> if (q.isEmpty()) list else list.filter { it.name.contains(q, ignoreCase = true) } }
     }
@@ -77,7 +111,7 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
     val catFocus = remember { FocusRequester() }
     val gridFocus = remember { FocusRequester() }
     // Retour depuis une fiche : le focus revient sur l'affiche ouverte ; sinon sur la première catégorie.
-    LaunchedEffect(items) {
+    LaunchedEffect(source) {
         val list = shown ?: return@LaunchedEffect
         if (s.focusIndex >= 0 && list.isNotEmpty()) {
             runCatching { s.gridState.scrollToItem(s.focusIndex.coerceIn(0, list.lastIndex)) }
@@ -97,7 +131,8 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                         cats.isEmpty() -> Message(Str.empty)
                         else -> LazyColumn(state = s.catState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             // « Tous » en tête de liste.
-                            val fixed = listOf(Category(Screen.ALL, Str.all), Category(Screen.LATEST, if (s.series) Str.latestSeries else Str.latestMovies))
+                            val fixed = listOf(Category(Screen.ALL, Str.all), Category(Screen.CONTINUE, Str.continueWatching),
+                                Category(Screen.LATEST, if (s.series) Str.latestSeries else Str.latestMovies))
                             itemsIndexed(fixed + cats, key = { _, c -> c.id }) { i, c ->
                                 val selected = s.category == c.id
                                 val m = if (selected || (i == 0 && s.category == null)) Modifier.focusRequester(catFocus) else Modifier
@@ -130,7 +165,8 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
                                 val m = if (i == target) Modifier.focusRequester(gridFocus) else Modifier
                                 PosterCard(p, m.onFocusChanged { if (it.isFocused) s.focusIndex = i }) {
                                     s.focusIndex = i
-                                    if (p.movie != null) nav.go(Screen.MovieDetail(p.movie)) else if (p.show != null) nav.go(Screen.ShowDetail(p.show))
+                                    if (p.watch != null) resumeWatch(nav, x, scope, p.watch)
+                                    else if (p.movie != null) nav.go(Screen.MovieDetail(p.movie)) else if (p.show != null) nav.go(Screen.ShowDetail(p.show))
                                 }
                             }
                         }
@@ -153,6 +189,11 @@ fun PosterCard(p: Poster, modifier: Modifier, onClick: () -> Unit) {
             if (r != null) Box(Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp))
                 .background(Brush.linearGradient(C.live)).padding(horizontal = 6.dp, vertical = 2.dp)) {
                 Label("★ " + String.format(java.util.Locale.ROOT, "%.1f", r), 10.sp, weight = FontWeight.Bold)
+            }
+            // Barre de progression (« Continuer à regarder »).
+            val w = p.watch
+            if (w != null && w.progress > 0f) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(5.dp).background(Color(0xAA000000))) {
+                Box(Modifier.fillMaxWidth(w.progress).fillMaxHeight().background(Brush.horizontalGradient(C.live)))
             }
         }
         Label(p.name, 12.sp, C.text, FontWeight.SemiBold, lines = 2)

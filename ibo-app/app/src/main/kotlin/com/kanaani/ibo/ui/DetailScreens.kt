@@ -40,6 +40,8 @@ import com.kanaani.ibo.data.Favorite
 import com.kanaani.ibo.data.MovieInfo
 import com.kanaani.ibo.data.ShowInfo
 import com.kanaani.ibo.data.Store
+import com.kanaani.ibo.data.Watch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.kanaani.ibo.data.Xtream
 
 /** Fond de fiche : image floutée par un voile sombre, comme IBO. */
@@ -69,6 +71,12 @@ private fun ActionButton(label: String, icon: String, primary: Boolean, modifier
     }
 }
 
+/** Durée lisible : 1:05:12 ou 12:34. */
+fun clockOf(ms: Long): String {
+    val t = ms / 1000; val h = t / 3600; val m = (t % 3600) / 60; val sec = t % 60
+    return if (h > 0) String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, m, sec) else String.format(java.util.Locale.ROOT, "%d:%02d", m, sec)
+}
+
 @Composable
 fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
     val m = s.movie
@@ -88,9 +96,18 @@ fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
                 info?.director?.let { Label("${Str.director}: $it", 12.sp, C.text2) }
                 info?.cast?.let { Label("${Str.cast}: $it", 12.sp, C.text2, lines = 2) }
                 Spacer(Modifier.height(6.dp))
+                val w = Watch("movie", m.id, m.name, m.poster, m.ext)
+                val saved = Store.watchOf("movie", m.id)?.takeIf { it.pos > 0 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton(Str.play, Icons.Play, true, Modifier.focusRequester(playFocus)) {
-                        nav.go(Screen.Play(m.name, x.movieUrl(m), live = false))
+                    if (saved != null) {
+                        ActionButton("${Str.resume} ${clockOf(saved.pos)}", Icons.Play, true, Modifier.focusRequester(playFocus)) {
+                            nav.go(Screen.Play(m.name, x.movieUrl(m), live = false, watch = w, startMs = saved.pos))
+                        }
+                        ActionButton(Str.fromStart, Icons.Play, false) {
+                            nav.go(Screen.Play(m.name, x.movieUrl(m), live = false, watch = w))
+                        }
+                    } else ActionButton(Str.play, Icons.Play, true, Modifier.focusRequester(playFocus)) {
+                        nav.go(Screen.Play(m.name, x.movieUrl(m), live = false, watch = w))
                     }
                     ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
                         Store.toggleFavorite(Favorite("movie", m.id, m.name, m.poster, m.ext))
@@ -111,6 +128,8 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
     val firstEpisode = remember { FocusRequester() }
     LaunchedEffect(info) { if (info != null) InitialFocusOnce(firstEpisode) }
     val fav = Store.isFavorite("series", show.id)
+    val saved = Store.watchOf("series", show.id)
+    val scope = rememberCoroutineScope()
 
     DetailBackdrop(info?.backdrop ?: show.poster) {
         Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -121,6 +140,11 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                 Text(show.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 2)
                 Meta(listOf(info?.year, info?.genre, (info?.rating ?: show.rating)?.let { "★ $it" }))
                 info?.plot?.let { Label(it, 12.sp, C.text2, FontWeight.Normal, lines = 5) }
+                if (saved != null && saved.episodeId.isNotEmpty()) {
+                    ActionButton("${Str.resume}  S${saved.season} E${saved.episode}", Icons.Play, true) {
+                        resumeWatch(nav, x, scope, saved)
+                    }
+                }
                 ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
                     Store.toggleFavorite(Favorite("series", show.id, show.name, show.poster))
                 }
@@ -141,7 +165,12 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                 }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
                     itemsIndexed(episodes, key = { _, e -> e.id }) { i, e ->
-                        Tile({ nav.go(Screen.Play("${show.name} · ${Str.episode} ${e.number}", x.episodeUrl(e), live = false, episodes = episodes, index = i)) },
+                        val here = saved?.takeIf { it.episodeId == e.id }
+                        Tile({
+                            val w = Watch("series", show.id, show.name, show.poster, e.ext, e.id, e.season, e.number)
+                            nav.go(Screen.Play("${show.name} · ${Str.episode} ${e.number}", x.episodeUrl(e), live = false, episodes = episodes, index = i,
+                                watch = w, startMs = here?.pos ?: 0))
+                        },
                             (if (i == 0) Modifier.focusRequester(firstEpisode) else Modifier).fillMaxWidth().height(58.dp),
                             RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.02f) {
                             Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -153,6 +182,9 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                                 Column(Modifier.weight(1f)) {
                                     Label("${Str.episode} ${e.number}", 11.sp, C.text2)
                                     Label(e.title, 14.sp, weight = FontWeight.SemiBold)
+                                    if (here != null && here.progress > 0f) Box(Modifier.padding(top = 3.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(C.cardHi)) {
+                                        Box(Modifier.fillMaxWidth(here.progress).fillMaxHeight().background(Brush.horizontalGradient(C.live)))
+                                    }
                                 }
                                 e.duration?.let { Label(it, 11.sp, C.text3) }
                             }

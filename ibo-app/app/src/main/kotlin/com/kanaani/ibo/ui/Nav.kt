@@ -11,6 +11,7 @@ import com.kanaani.ibo.data.Channel
 import com.kanaani.ibo.data.Episode
 import com.kanaani.ibo.data.Movie
 import com.kanaani.ibo.data.Show
+import com.kanaani.ibo.data.Watch
 
 /**
  * Écrans de l'application. Chaque écran garde son état (catégorie choisie, défilement, élément focalisé) dans son
@@ -48,6 +49,9 @@ sealed class Screen {
         val channels: List<Channel> = emptyList(),
         val index: Int = 0,
         val episodes: List<Episode> = emptyList(),
+        /** Film / épisode à mémoriser pour « Continuer à regarder » (position ignorée) ; [startMs] = reprise. */
+        val watch: Watch? = null,
+        val startMs: Long = 0,
     ) : Screen()
     object Favorites : Screen()
     /** Ordre des catégories d'un type : "live", "movie" ou "series". */
@@ -62,6 +66,8 @@ sealed class Screen {
         const val ALL = "__all__"
         /** Films / séries : derniers ajouts ou dernières mises à jour. */
         const val LATEST = "__latest__"
+        /** Films / séries : continuer à regarder. */
+        const val CONTINUE = "__continue__"
     }
 }
 

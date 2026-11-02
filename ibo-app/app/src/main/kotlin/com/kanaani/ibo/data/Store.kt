@@ -17,6 +17,18 @@ import kotlinx.serialization.json.jsonArray
 data class Favorite(val kind: String, val id: String, val name: String, val image: String?, val ext: String = "")
 
 /**
+ * Lecture en cours d'un film ou d'une série (« Continuer à regarder »). Une entrée par film ou par série : pour une
+ * série, c'est le dernier épisode regardé ([episodeId], [season], [episode]). [pos]/[dur] en ms, [at] = horodatage.
+ */
+data class Watch(
+    val kind: String, val id: String, val name: String, val image: String?, val ext: String,
+    val episodeId: String = "", val season: Int = 0, val episode: Int = 0,
+    val pos: Long = 0, val dur: Long = 0, val at: Long = 0,
+) {
+    val progress: Float get() = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+}
+
+/**
  * Réglages et état persistants (SharedPreferences) : identifiants, langue, favoris. Les valeurs lues par l'interface
  * sont des états Compose : un changement (langue, connexion) recompose tout de suite.
  */
@@ -36,6 +48,10 @@ object Store {
     var categoryNames by mutableStateOf<Map<String, Map<String, String>>>(emptyMap())
         private set
 
+    /** « Continuer à regarder », le plus récent en premier. */
+    var watching by mutableStateOf<List<Watch>>(emptyList())
+        private set
+
     fun init(ctx: Context) {
         sp = ctx.getSharedPreferences("kanaani", Context.MODE_PRIVATE)
         language = sp.getString("lang", "ar") ?: "ar"
@@ -47,7 +63,42 @@ object Store {
             sp.getString("order_$k", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
         }
         categoryNames = listOf("live", "movie", "series").associateWith { k -> decodeNames(sp.getString("names_$k", null)) }
+        watching = decodeWatch(sp.getString("watching", null))
     }
+
+    fun watchOf(kind: String, id: String): Watch? = watching.firstOrNull { it.kind == kind && it.id == id }
+
+    /** Enregistre la position (remplace l'entrée du même film / de la même série et la remet en tête). */
+    fun saveWatch(w: Watch) {
+        val entry = w.copy(at = System.currentTimeMillis())
+        watching = (listOf(entry) + watching.filterNot { it.kind == w.kind && it.id == w.id }).take(80)
+        sp.edit().putString("watching", encodeWatch(watching)).apply()
+    }
+
+    fun removeWatch(kind: String, id: String) {
+        if (watchOf(kind, id) == null) return
+        watching = watching.filterNot { it.kind == kind && it.id == id }
+        sp.edit().putString("watching", encodeWatch(watching)).apply()
+    }
+
+    private fun encodeWatch(list: List<Watch>): String = JsonArray(list.map { w ->
+        JsonObject(mapOf(
+            "k" to JsonPrimitive(w.kind), "i" to JsonPrimitive(w.id), "n" to JsonPrimitive(w.name),
+            "m" to JsonPrimitive(w.image ?: ""), "e" to JsonPrimitive(w.ext), "ei" to JsonPrimitive(w.episodeId),
+            "s" to JsonPrimitive(w.season), "en" to JsonPrimitive(w.episode),
+            "p" to JsonPrimitive(w.pos), "d" to JsonPrimitive(w.dur), "a" to JsonPrimitive(w.at),
+        ))
+    }).toString()
+
+    private fun decodeWatch(raw: String?): List<Watch> = runCatching {
+        if (raw.isNullOrBlank()) return emptyList()
+        Json.parseToJsonElement(raw).jsonArray.mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull.orEmpty()
+            fun l(k: String) = s(k).toLongOrNull() ?: 0L
+            Watch(s("k"), s("i"), s("n"), s("m").ifEmpty { null }, s("e"), s("ei"), l("s").toInt(), l("en").toInt(), l("p"), l("d"), l("a"))
+        }.filter { it.id.isNotEmpty() }
+    }.getOrDefault(emptyList())
 
     /** Renomme une catégorie ; nom vide = nom d'origine. */
     fun renameCategory(kind: String, id: String, name: String) {
@@ -93,7 +144,8 @@ object Store {
     }
 
     fun logout() {
-        sp.edit().remove("user").remove("pass").remove("favorites").apply()
+        sp.edit().remove("user").remove("pass").remove("favorites").remove("watching").apply()
+        watching = emptyList()
         // L'ordre des catégories est une préférence de l'appareil : il reste après une déconnexion.
         favorites = emptyList()
         session = null

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.kanaani.ibo.KeyHook
+import com.kanaani.ibo.data.Store
 import com.kanaani.ibo.data.Xtream
 import com.kanaani.ibo.player.Playback
 import kotlinx.coroutines.delay
@@ -57,7 +58,25 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
     var showInfo by remember { mutableStateOf(true) }
     var infoTick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(url) { Playback.play(ctx, url) }
+    LaunchedEffect(url) { Playback.play(ctx, url, s.startMs) }
+    // ── « Continuer à regarder » : position mémorisée toutes les 5 s et en quittant. ──
+    var finished by remember { mutableStateOf(false) }
+    fun saveProgress() {
+        val w = s.watch ?: return
+        if (s.live || finished || Playback.current != url) return
+        val dur = Playback.duration(); val pos = Playback.position()
+        if (dur <= 0) return
+        val nearEnd = pos >= dur - maxOf(dur / 20, 90_000L).coerceAtMost(dur / 4)
+        when {
+            nearEnd && s.episodes.getOrNull(s.index + 1) == null -> Store.removeWatch(w.kind, w.id)
+            nearEnd -> s.episodes.getOrNull(s.index + 1)?.let { n -> // fini : on reprendra à l'épisode suivant
+                Store.saveWatch(w.copy(episodeId = n.id, ext = n.ext, season = n.season, episode = n.number, pos = 0, dur = 0))
+            }
+            pos >= 15_000L || Store.watchOf(w.kind, w.id)?.episodeId == w.episodeId -> Store.saveWatch(w.copy(pos = pos, dur = dur))
+        }
+    }
+    LaunchedEffect(url) { while (true) { delay(5_000); saveProgress() } }
+    androidx.compose.runtime.DisposableEffect(url) { onDispose { saveProgress() } }
     // Bandeau d'information : visible 4 s après chaque changement.
     LaunchedEffect(infoTick, index) { showInfo = true; delay(4_000); showInfo = false }
     // ── Série : épisode suivant une minute avant la fin (compte à rebours de 10 s, annulable). ──
@@ -66,7 +85,10 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
     var nextCancelled by remember { mutableStateOf(false) }
     fun goNext() {
         val n = next ?: return
-        nav.replaceTop(Screen.Play(s.title.substringBefore(" · ") + " · ${Str.episode} ${n.number}", x.episodeUrl(n), live = false, episodes = s.episodes, index = s.index + 1))
+        val w = s.watch?.copy(episodeId = n.id, ext = n.ext, season = n.season, episode = n.number, pos = 0, dur = 0)
+        w?.let { Store.saveWatch(it) }
+        finished = true
+        nav.replaceTop(Screen.Play(s.title.substringBefore(" · ") + " · ${Str.episode} ${n.number}", x.episodeUrl(n), live = false, episodes = s.episodes, index = s.index + 1, watch = w))
     }
     LaunchedEffect(url) {
         if (next == null) return@LaunchedEffect
