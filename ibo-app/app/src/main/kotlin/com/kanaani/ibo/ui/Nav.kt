@@ -57,6 +57,8 @@ sealed class Screen {
     /** Ordre des catégories d'un type : "live", "movie" ou "series". */
     class Reorder(val kind: String) : Screen()
     object Account : Screen()
+    /** Téléchargements hors ligne. */
+    object Downloads : Screen()
     object Settings : Screen()
 
     companion object {

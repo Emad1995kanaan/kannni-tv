@@ -183,6 +183,7 @@ fun BillboardHome(nav: Navigator, x: Xtream, now: Long) {
             Row(Modifier.fillMaxWidth().height(46.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 BottomTile(Str.favorites, Icons.Heart, Modifier.weight(1f)) { nav.go(Screen.Favorites) }
                 BottomTile(Str.account, Icons.Account, Modifier.weight(1f)) { nav.go(Screen.Account) }
+                BottomTile(Str.downloads, Icons.Download, Modifier.weight(1f)) { nav.go(Screen.Downloads) }
                 BottomTile(Str.settings, Icons.Settings, Modifier.weight(1f)) { nav.go(Screen.Settings) }
             }
             Spacer(Modifier.height(6.dp))

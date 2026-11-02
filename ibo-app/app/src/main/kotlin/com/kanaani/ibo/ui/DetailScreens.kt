@@ -2,6 +2,7 @@ package com.kanaani.ibo.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -79,6 +80,7 @@ fun clockOf(ms: Long): String {
 
 @Composable
 fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
+    val download = rememberDownloader()
     val m = s.movie
     val info by produceState<MovieInfo?>(null, m.id) { value = x.movieInfo(m.id) }
     val playFocus = remember { FocusRequester() }
@@ -112,6 +114,16 @@ fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
                     ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
                         Store.toggleFavorite(Favorite("movie", m.id, m.name, m.poster, m.ext))
                     }
+                    // Téléchargement hors ligne.
+                    val dl = com.kanaani.ibo.data.Downloads.get("movie:${m.id}")
+                    ActionButton(dlLabel(dl), Icons.Download, false) {
+                        when (dl?.state) {
+                            null -> download(movieDl(x, m))
+                            com.kanaani.ibo.data.DlState.Done -> if (!playDownload(nav, dl)) nav.go(Screen.Downloads)
+                            com.kanaani.ibo.data.DlState.Paused, com.kanaani.ibo.data.DlState.Failed -> com.kanaani.ibo.data.Downloads.resume(dl.key)
+                            else -> nav.go(Screen.Downloads)
+                        }
+                    }
                 }
             }
         }
@@ -120,6 +132,7 @@ fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
 
 @Composable
 fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
+    val download = rememberDownloader()
     val show = s.show
     val info by produceState<ShowInfo?>(null, show.id) { value = x.showInfo(show.id) }
     val seasons = info?.seasons.orEmpty()
@@ -148,6 +161,9 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                 ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
                     Store.toggleFavorite(Favorite("series", show.id, show.name, show.poster))
                 }
+                if (episodes.isNotEmpty()) ActionButton(Str.downloadSeason + (s.season?.let { " $it" } ?: ""), Icons.Download, false) {
+                    episodes.forEach { e -> if (com.kanaani.ibo.data.Downloads.get("episode:${e.id}") == null) download(episodeDl(x, show, e)) }
+                }
             }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (info == null) { Loading(); return@Column }
@@ -166,12 +182,14 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
                     itemsIndexed(episodes, key = { i, e -> e.id + "#" + i }) { i, e ->
                         val here = saved?.takeIf { it.episodeId == e.id }
+                        val dl = com.kanaani.ibo.data.Downloads.get("episode:${e.id}")
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Tile({
                             val w = Watch("series", show.id, show.name, show.poster, e.ext, e.id, e.season, e.number)
                             nav.go(Screen.Play("${show.name} · ${Str.episode} ${e.number}", x.episodeUrl(e), live = false, episodes = episodes, index = i,
                                 watch = w, startMs = here?.pos ?: 0))
                         },
-                            (if (i == 0) Modifier.focusRequester(firstEpisode) else Modifier).fillMaxWidth().height(58.dp),
+                            (if (i == 0) Modifier.focusRequester(firstEpisode) else Modifier).weight(1f).height(58.dp),
                             RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.02f) {
                             Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Box(Modifier.width(80.dp).height(45.dp).clip(RoundedCornerShape(8.dp)).background(C.cardHi), contentAlignment = Alignment.Center) {
@@ -188,6 +206,26 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
                                 }
                                 e.duration?.let { Label(it, 11.sp, C.text3) }
                             }
+                        }
+                        // Télécharger l'épisode (ou état du téléchargement).
+                        Tile({
+                            when (dl?.state) {
+                                null -> download(episodeDl(x, show, e))
+                                com.kanaani.ibo.data.DlState.Done -> if (!playDownload(nav, dl)) nav.go(Screen.Downloads)
+                                com.kanaani.ibo.data.DlState.Paused, com.kanaani.ibo.data.DlState.Failed -> com.kanaani.ibo.data.Downloads.resume(dl.key)
+                                else -> nav.go(Screen.Downloads)
+                            }
+                        }, Modifier.size(58.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.04f) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                when (dl?.state) {
+                                    null -> Icon(Icons.Download, 22.dp, Color.White)
+                                    com.kanaani.ibo.data.DlState.Done -> Label("✓", 20.sp, weight = FontWeight.Bold)
+                                    com.kanaani.ibo.data.DlState.Running -> Label("${(dl.progress * 100).toInt()}%", 12.sp, weight = FontWeight.Bold)
+                                    com.kanaani.ibo.data.DlState.Failed -> Label("!", 20.sp, C.error, FontWeight.Bold)
+                                    else -> Label("⏸", 16.sp)
+                                }
+                            }
+                        }
                         }
                     }
                 }

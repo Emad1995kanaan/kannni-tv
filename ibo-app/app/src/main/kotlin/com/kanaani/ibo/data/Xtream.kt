@@ -147,6 +147,10 @@ class Xtream(val hosts: List<String>, val username: String, val password: String
         val root = get(null) as? JsonObject ?: return null
         val ui = root["user_info"] as? JsonObject ?: return Account(null, null, null, null, null, false)
         if (ui.str("auth") == "0") return Account(null, null, null, null, null, false)
+        // Compte actif vu en ligne : la lecture hors ligne des téléchargements reste permise 7 jours.
+        if (ui.str("status").equals("Active", ignoreCase = true)) runCatching {
+            Downloads.markOnline(ui.str("exp_date")?.toLongOrNull()?.takeIf { it > 0 }?.times(1000))
+        }
         return Account(
             status = ui.str("status"),
             expiresAt = ui.str("exp_date")?.toLongOrNull()?.takeIf { it > 0 }?.times(1000),

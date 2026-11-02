@@ -33,6 +33,8 @@ object Playback {
         private set
 
     private var triedHls = false
+    /** Lecture d'un flux réseau en cours (les téléchargements se mettent en pause pour lui laisser la connexion). */
+    val streaming: Boolean get() = current?.startsWith("http") == true
     /** Adresse réellement chargée (HLS de secours, autre serveur…) ; [current] garde l'adresse demandée. */
     private var attempt: String? = null
     private var attemptStart = 0L
@@ -46,7 +48,8 @@ object Playback {
     private fun build(ctx: Context): ExoPlayer {
         val load = DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_500, 3_000).build()
         val p = ExoPlayer.Builder(ctx)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(Http.client)))
+            // Réseau via OkHttp ; fichiers locaux (téléchargements hors ligne) via DefaultDataSource.
+            .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(ctx, OkHttpDataSource.Factory(Http.client))))
             .setLoadControl(load)
             .build()
         p.addListener(object : Player.Listener {

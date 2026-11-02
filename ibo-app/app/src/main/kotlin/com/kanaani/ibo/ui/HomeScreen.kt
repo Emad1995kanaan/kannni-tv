@@ -85,6 +85,7 @@ fun HomeScreen(nav: Navigator, x: Xtream) {
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 SmallTile(Str.favorites, Icons.Heart, Modifier.weight(1f)) { nav.go(Screen.Favorites) }
+                SmallTile(Str.downloads, Icons.Download, Modifier.weight(1f)) { nav.go(Screen.Downloads) }
                 SmallTile(Str.account, Icons.Account, Modifier.weight(1f)) { nav.go(Screen.Account) }
                 SmallTile(Str.settings, Icons.Settings, Modifier.weight(1f)) { nav.go(Screen.Settings) }
             }

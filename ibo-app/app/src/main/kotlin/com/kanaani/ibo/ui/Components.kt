@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -198,11 +199,25 @@ fun Field(
     imeAction: ImeAction = ImeAction.Next,
     numeric: Boolean = false,
     onDone: () -> Unit = {},
+    /** Champ de recherche : clavier ouvert tout de suite (l'utilisateur vient d'appuyer sur « Rechercher »). */
+    startEditing: Boolean = false,
+    onBlur: () -> Unit = {},
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // Clavier JAMAIS ouvert tout seul : le champ reste en lecture seule (pas de session de saisie, donc certains
+    // claviers de TV ne peuvent pas s'ouvrir) jusqu'à OK, un toucher, ou l'ouverture de la recherche.
+    var editing by remember { mutableStateOf(startEditing) }
+    var wasFocused by remember { mutableStateOf(false) }
+    val touch = androidx.compose.ui.platform.LocalInputModeManager.current.inputMode == androidx.compose.ui.input.InputMode.Touch
+    LaunchedEffect(focused) {
+        if (focused) { wasFocused = true; if (touch) editing = true }
+        else if (wasFocused) { wasFocused = false; editing = false; keyboard?.hide(); onBlur() }
+    }
+    LaunchedEffect(editing, focused) { if (editing && focused) { delay(60); keyboard?.show() } }
     BasicTextField(
+        readOnly = !editing,
         value = value,
         onValueChange = onChange,
         singleLine = true,
@@ -227,7 +242,8 @@ fun Field(
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onPreviewKeyEvent { e ->
                 if (e.type == KeyEventType.KeyDown && (e.key == Key.DirectionCenter || e.key == Key.Enter || e.key == Key.NumPadEnter)) {
-                    keyboard?.show(); true
+                    if (editing) keyboard?.show() else editing = true
+                    true
                 } else false
             }
             .height(46.dp)
@@ -262,10 +278,12 @@ fun SearchBox(open: Boolean, onOpen: (Boolean) -> Unit, value: String, onChange:
     }
     val field = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        repeat(10) { delay(60); if (runCatching { field.requestFocus() }.getOrDefault(false)) { keyboard?.show(); return@LaunchedEffect } }
+        repeat(10) { delay(60); if (runCatching { field.requestFocus() }.getOrDefault(false)) return@LaunchedEffect }
     }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Field(value, onChange, Str.search, Modifier.weight(1f), focusRequester = field, imeAction = ImeAction.Search, onDone = { keyboard?.hide() })
+        // En quittant le champ : clavier fermé ; recherche vide = bouton « Rechercher » de nouveau.
+        Field(value, onChange, Str.search, Modifier.weight(1f), focusRequester = field, imeAction = ImeAction.Search, onDone = { keyboard?.hide() },
+            startEditing = true, onBlur = { if (value.isBlank()) onOpen(false) })
         Spacer(Modifier.width(6.dp))
         Tile({ keyboard?.hide(); onChange(""); onOpen(false) }, Modifier.size(40.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label("✕", 15.sp, weight = FontWeight.Bold) }

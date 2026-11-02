@@ -53,6 +53,7 @@ private fun Screens(onExit: () -> Unit) {
         Screen.Favorites -> FavoritesScreen(nav, session)
         is Screen.Reorder -> ReorderScreen(session, top)
         Screen.Account -> AccountScreen(session)
+        Screen.Downloads -> DownloadsScreen(nav)
         Screen.Settings -> SettingsScreen(nav, session)
     }
     LiveVideoHost(nav, session, top)
