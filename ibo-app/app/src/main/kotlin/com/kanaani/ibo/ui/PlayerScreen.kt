@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -139,7 +141,24 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
                 else Modifier,
             ),
     ) {
-        PlayerSurface(controls = !s.live)
+        var playerView by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
+        var controlsVisible by remember { mutableStateOf(true) }
+        PlayerSurface(controls = !s.live, onView = { v ->
+            playerView = v
+            v.setControllerVisibilityListener(androidx.media3.ui.PlayerView.ControllerVisibilityListener { vis -> controlsVisible = vis == android.view.View.VISIBLE })
+        })
+        // VOD au toucher (contrôles masqués) : double appui à droite = +10 s, à gauche = −10 s ; appui simple = contrôles.
+        if (!s.live && !controlsVisible) Box(
+            Modifier.fillMaxSize().pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { o ->
+                        if (o.x > size.width / 2f) { Playback.seekBy(10_000); seekFlash = "+10" } else { Playback.seekBy(-10_000); seekFlash = "−10" }
+                        flashTick++
+                    },
+                    onTap = { playerView?.showController() },
+                )
+            },
+        )
         // Direct au toucher : un appui sur l'image affiche le bandeau (et les boutons ▲ ▼).
         if (s.live) Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { infoTick++ })
 

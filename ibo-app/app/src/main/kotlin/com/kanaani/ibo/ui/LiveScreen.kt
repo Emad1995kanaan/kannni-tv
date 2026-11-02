@@ -190,7 +190,7 @@ private fun ChannelRow(c: Channel, index: Int, playing: Boolean, modifier: Modif
 
 /** Surface vidéo du lecteur partagé. [controls] : barre de contrôle Media3 (plein écran VOD). */
 @Composable
-fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier) {
+fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier, onView: (PlayerView) -> Unit = {}) {
     AndroidView(
         factory = { c ->
             PlayerView(c).apply {
@@ -205,6 +205,7 @@ fun PlayerSurface(controls: Boolean, modifier: Modifier = Modifier) {
                 player = Playback.player(c)
                 // Plein écran VOD : la barre de contrôle reçoit la télécommande tout de suite.
                 if (controls) post { requestFocus(); showController() }
+                onView(this)
             }
         },
         onRelease = { it.player = null },
