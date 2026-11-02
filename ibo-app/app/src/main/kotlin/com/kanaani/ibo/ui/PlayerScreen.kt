@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.kanaani.ibo.KeyHook
 import com.kanaani.ibo.data.Xtream
 import com.kanaani.ibo.player.Playback
 import kotlinx.coroutines.delay
@@ -57,12 +58,54 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
     LaunchedEffect(url) { Playback.play(ctx, url) }
     // Bandeau d'information : visible 4 s après chaque changement.
     LaunchedEffect(infoTick, index) { showInfo = true; delay(4_000); showInfo = false }
-    // Série : épisode suivant à la fin.
-    LaunchedEffect(Playback.ended) {
-        if (Playback.ended && !s.live && s.index + 1 < s.episodes.size) {
-            val next = s.episodes[s.index + 1]
-            nav.replaceTop(Screen.Play(s.title.substringBefore(" · ") + " · ${Str.episode} ${next.number}", x.episodeUrl(next), live = false, episodes = s.episodes, index = s.index + 1))
+    // ── Série : épisode suivant une minute avant la fin (compte à rebours de 10 s, annulable). ──
+    val next = if (!s.live) s.episodes.getOrNull(s.index + 1) else null
+    var nextCountdown by remember { mutableStateOf<Long?>(null) }
+    var nextCancelled by remember { mutableStateOf(false) }
+    fun goNext() {
+        val n = next ?: return
+        nav.replaceTop(Screen.Play(s.title.substringBefore(" · ") + " · ${Str.episode} ${n.number}", x.episodeUrl(n), live = false, episodes = s.episodes, index = s.index + 1))
+    }
+    LaunchedEffect(url) {
+        if (next == null) return@LaunchedEffect
+        while (true) {
+            delay(500)
+            val dur = Playback.duration()
+            if (nextCancelled || dur < 3 * 60_000L) { nextCountdown = null; continue }
+            val remaining = dur - Playback.position()
+            when {
+                remaining <= 60_000L -> { goNext(); return@LaunchedEffect }
+                remaining <= 70_000L -> nextCountdown = ((remaining - 60_000L) / 1000L).coerceAtLeast(0) + 1
+                else -> nextCountdown = null
+            }
         }
+    }
+    // Filet de sécurité : fin atteinte (durée inconnue, épisode court).
+    LaunchedEffect(Playback.ended) { if (Playback.ended && next != null && !nextCancelled) goNext() }
+
+    // ── VOD : ◀ / ▶ = −10 s / +10 s, OK = pause / lecture (avant que le lecteur ne prenne la touche). ──
+    var seekFlash by remember { mutableStateOf<String?>(null) }
+    var flashTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(flashTick) { if (seekFlash != null) { delay(800); seekFlash = null } }
+    val overlayShown = nextCountdown != null
+    androidx.compose.runtime.DisposableEffect(s, overlayShown) {
+        if (!s.live) KeyHook.handler = handler@{ e ->
+            if (overlayShown) return@handler false // les boutons « Épisode suivant » utilisent les flèches
+            val down = e.action == KeyEvent.ACTION_DOWN
+            when (e.keyCode) {
+                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                    if (down) { Playback.seekBy(10_000); seekFlash = "+10"; flashTick++ }; true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    if (down) { Playback.seekBy(-10_000); seekFlash = "−10"; flashTick++ }; true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                    if (down && e.repeatCount == 0) Playback.togglePause(); true
+                }
+                else -> false
+            }
+        }
+        onDispose { KeyHook.handler = null }
     }
 
     fun zap(delta: Int) {
@@ -105,6 +148,35 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play) {
                 Label(Str.playError, 16.sp, C.text, FontWeight.SemiBold)
                 Tile({ Playback.retry(ctx) }, Modifier.width(200.dp).height(42.dp), RoundedCornerShape(12.dp), colors = C.live) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label(Str.retry, 15.sp, weight = FontWeight.Bold) }
+                }
+            }
+        }
+
+        seekFlash?.let { f ->
+            Box(Modifier.align(Alignment.Center).clip(RoundedCornerShape(40.dp)).background(Color(0x99000000)).padding(horizontal = 26.dp, vertical = 14.dp)) {
+                Label("$f s", 26.sp, weight = FontWeight.Bold)
+            }
+        }
+
+        // Épisode suivant : carte en bas à droite avec compte à rebours.
+        nextCountdown?.let { secs ->
+            val playNow = remember { FocusRequester() }
+            LaunchedEffect(Unit) { InitialFocusOnce(playNow) }
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(28.dp).width(300.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xE60E1736)).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Label(Str.nextEpisode + " · ${Str.episode} ${next?.number ?: ""}", 15.sp, weight = FontWeight.Bold)
+                Label(Str.nextIn(secs), 13.sp, C.text2)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Tile({ goNext() }, Modifier.weight(1f).height(38.dp).focusRequester(playNow), RoundedCornerShape(10.dp), colors = C.live, focusScale = 1.03f) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label(Str.playNow, 13.sp, weight = FontWeight.Bold) }
+                    }
+                    Tile({ nextCancelled = true; nextCountdown = null }, Modifier.weight(1f).height(38.dp), RoundedCornerShape(10.dp),
+                        colors = listOf(C.card), focusColors = C.live, focusScale = 1.03f) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label(Str.cancel, 13.sp, weight = FontWeight.SemiBold) }
+                    }
                 }
             }
         }

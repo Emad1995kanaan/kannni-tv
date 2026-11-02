@@ -79,6 +79,19 @@ object Playback {
         p.playWhenReady = true
     }
 
+    /** Avance (+) ou recul (−) en millisecondes dans la vidéo en cours. */
+    fun seekBy(deltaMs: Long) {
+        val p = exo ?: return
+        val dur = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+        p.seekTo((p.currentPosition + deltaMs).coerceIn(0, dur))
+    }
+
+    fun togglePause() { exo?.let { it.playWhenReady = !it.playWhenReady } }
+
+    /** Position et durée (ms) ; durée ≤ 0 tant qu'elle n'est pas connue. */
+    fun position(): Long = exo?.currentPosition ?: 0
+    fun duration(): Long = exo?.duration?.takeIf { it > 0 } ?: 0
+
     fun retry(ctx: Context) { current?.let { u -> current = null; play(ctx, u) } }
 
     fun stop() {

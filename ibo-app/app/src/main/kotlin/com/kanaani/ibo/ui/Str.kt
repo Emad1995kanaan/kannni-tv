@@ -67,6 +67,9 @@ object Str {
     // Lecteur
     val playError get() = t("This stream cannot be played right now.", "تعذّر تشغيل البث حالياً.", "לא ניתן להפעיל את השידור כרגע.")
     val retry get() = t("Retry", "إعادة المحاولة", "נסו שוב")
+    val nextEpisode get() = t("Next episode", "الحلقة التالية", "הפרק הבא")
+    fun nextIn(sec: Long) = t("Starts in $sec s", "تبدأ خلال $sec ثانية", "מתחיל בעוד $sec שניות")
+    val playNow get() = t("Play now", "شغّل الآن", "הפעלה עכשיו")
 
     // Compte
     val status get() = t("Status", "الحالة", "סטטוס")

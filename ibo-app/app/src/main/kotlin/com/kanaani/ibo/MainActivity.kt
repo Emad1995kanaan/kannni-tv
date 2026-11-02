@@ -27,7 +27,20 @@ class IboApp : Application() {
     }
 }
 
+/**
+ * Touches de la télécommande interceptées AVANT les vues (le lecteur Media3 les consommerait sinon) :
+ * l'écran de lecture y branche l'avance / le retour de 10 s.
+ */
+object KeyHook {
+    var handler: ((android.view.KeyEvent) -> Boolean)? = null
+}
+
 class MainActivity : ComponentActivity() {
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (KeyHook.handler?.invoke(event) == true) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
