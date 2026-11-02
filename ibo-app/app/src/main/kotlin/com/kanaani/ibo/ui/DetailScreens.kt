@@ -1,0 +1,165 @@
+package com.kanaani.ibo.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import com.kanaani.ibo.data.Favorite
+import com.kanaani.ibo.data.MovieInfo
+import com.kanaani.ibo.data.ShowInfo
+import com.kanaani.ibo.data.Store
+import com.kanaani.ibo.data.Xtream
+
+/** Fond de fiche : image floutée par un voile sombre, comme IBO. */
+@Composable
+private fun DetailBackdrop(image: String?, content: @Composable () -> Unit) {
+    Backdrop {
+        if (image != null) AsyncImage(image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.35f)
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xF0040817), Color(0x99040817), Color(0x55040817)))))
+        content()
+    }
+}
+
+@Composable
+private fun Meta(parts: List<String?>) {
+    val text = parts.filterNot { it.isNullOrBlank() }.joinToString("  ·  ")
+    if (text.isNotEmpty()) Label(text, 13.sp, C.text2)
+}
+
+@Composable
+private fun ActionButton(label: String, icon: String, primary: Boolean, modifier: Modifier = Modifier, fill: Boolean = false, onClick: () -> Unit) {
+    Tile(onClick, modifier.height(44.dp), RoundedCornerShape(12.dp), colors = if (primary) C.live else listOf(C.card), focusColors = C.live, focusScale = 1.04f) {
+        Row(Modifier.fillMaxHeight().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, 18.dp, Color.White, fill = fill || icon == Icons.Play)
+            Spacer(Modifier.width(10.dp))
+            Label(label, 15.sp, weight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
+    val m = s.movie
+    val info by produceState<MovieInfo?>(null, m.id) { value = x.movieInfo(m.id) }
+    val playFocus = remember { FocusRequester() }
+    InitialFocus(playFocus)
+    val fav = Store.isFavorite("movie", m.id)
+    DetailBackdrop(info?.backdrop ?: m.poster) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+            Box(Modifier.width(220.dp).height(330.dp).clip(RoundedCornerShape(14.dp)).background(C.card)) {
+                AsyncImage(m.poster, m.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(m.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 30.sp, maxLines = 2)
+                Meta(listOf(info?.year, info?.duration, info?.genre, (info?.rating ?: m.rating)?.let { "★ $it" }))
+                info?.plot?.let { Label(it, 14.sp, C.text, FontWeight.Normal, lines = 6) }
+                info?.director?.let { Label("${Str.director}: $it", 12.sp, C.text2) }
+                info?.cast?.let { Label("${Str.cast}: $it", 12.sp, C.text2, lines = 2) }
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ActionButton(Str.play, Icons.Play, true, Modifier.focusRequester(playFocus)) {
+                        nav.go(Screen.Play(m.name, x.movieUrl(m), live = false))
+                    }
+                    ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
+                        Store.toggleFavorite(Favorite("movie", m.id, m.name, m.poster, m.ext))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
+    val show = s.show
+    val info by produceState<ShowInfo?>(null, show.id) { value = x.showInfo(show.id) }
+    val seasons = info?.seasons.orEmpty()
+    LaunchedEffect(seasons) { val cur = s.season; if (cur == null || !seasons.containsKey(cur)) s.season = seasons.keys.firstOrNull() }
+    val episodes = s.season?.let { seasons[it] }.orEmpty()
+    val firstEpisode = remember { FocusRequester() }
+    LaunchedEffect(info) { if (info != null) InitialFocusOnce(firstEpisode) }
+    val fav = Store.isFavorite("series", show.id)
+
+    DetailBackdrop(info?.backdrop ?: show.poster) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.width(300.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.width(150.dp).height(225.dp).clip(RoundedCornerShape(12.dp)).background(C.card)) {
+                    AsyncImage(show.poster, show.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                }
+                Text(show.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 2)
+                Meta(listOf(info?.year, info?.genre, (info?.rating ?: show.rating)?.let { "★ $it" }))
+                info?.plot?.let { Label(it, 12.sp, C.text2, FontWeight.Normal, lines = 5) }
+                ActionButton(if (fav) Str.removeFav else Str.addFav, Icons.Star, false, fill = fav) {
+                    Store.toggleFavorite(Favorite("series", show.id, show.name, show.poster))
+                }
+            }
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (info == null) { Loading(); return@Column }
+                if (seasons.isEmpty()) { Message(Str.noEpisodes); return@Column }
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(seasons.keys.toList(), key = { it }) { n ->
+                        val on = s.season == n
+                        Tile({ s.season = n }, Modifier.height(36.dp), RoundedCornerShape(18.dp),
+                            colors = if (on) C.live else listOf(C.card), focusColors = C.live, focusScale = 1.04f) {
+                            Box(Modifier.fillMaxHeight().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+                                Label("${Str.season} $n", 13.sp, weight = if (on) FontWeight.Bold else FontWeight.Medium)
+                            }
+                        }
+                    }
+                }
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                    itemsIndexed(episodes, key = { _, e -> e.id }) { i, e ->
+                        Tile({ nav.go(Screen.Play("${show.name} · ${Str.episode} ${e.number}", x.episodeUrl(e), live = false, episodes = episodes, index = i)) },
+                            (if (i == 0) Modifier.focusRequester(firstEpisode) else Modifier).fillMaxWidth().height(58.dp),
+                            RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.02f) {
+                            Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.width(80.dp).height(45.dp).clip(RoundedCornerShape(8.dp)).background(C.cardHi), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Play, 16.dp, Color.White, fill = true)
+                                    if (e.image != null) AsyncImage(e.image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Label("${Str.episode} ${e.number}", 11.sp, C.text2)
+                                    Label(e.title, 14.sp, weight = FontWeight.SemiBold)
+                                }
+                                e.duration?.let { Label(it, 11.sp, C.text3) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

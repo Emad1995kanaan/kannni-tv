@@ -1,0 +1,247 @@
+package com.kanaani.ibo.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.kanaani.ibo.R
+import kotlinx.coroutines.delay
+
+/** Palette « IBO » : bleu nuit, tuiles en dégradé. */
+object C {
+    val bgTop = Color(0xFF040817)
+    val bgBottom = Color(0xFF0A1A46)
+    val glow = Color(0x553A6BFF)
+    val panel = Color(0xFF0E1736)
+    val card = Color(0xFF16214D)
+    val cardHi = Color(0xFF213063)
+    val line = Color(0xFF2C3B75)
+    val text = Color(0xFFF5F7FF)
+    val text2 = Color(0xFFB8C4E6)
+    val text3 = Color(0xFF6B7AA6)
+    val accent = Color(0xFF1E5BFF)
+    val accentDark = Color(0xFF0B2E8C)
+    val focus = Color.White
+    val error = Color(0xFFFF8A8A)
+    val live = listOf(Color(0xFF1E5BFF), Color(0xFF0B2E8C))
+    val movies = listOf(Color(0xFFFF6A3D), Color(0xFFB3122E))
+    val series = listOf(Color(0xFF8B5CF6), Color(0xFF3B1C8C))
+    val small = listOf(Color(0xFF1A2550), Color(0xFF111936))
+    val danger = listOf(Color(0xFF7A1C2B), Color(0xFF4A0F1A))
+}
+
+private fun variable(id: Int, w: Int) = Font(id, weight = FontWeight(w), variationSettings = FontVariation.Settings(FontVariation.weight(w)))
+
+val Sora = FontFamily(variable(R.font.sora, 400), variable(R.font.sora, 600), variable(R.font.sora, 700))
+val Manrope = FontFamily(variable(R.font.manrope, 400), variable(R.font.manrope, 500), variable(R.font.manrope, 600), variable(R.font.manrope, 700))
+
+/** Fond commun : dégradé bleu nuit + halo. */
+@Composable
+fun Backdrop(content: @Composable BoxScope.() -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(C.bgTop, C.bgBottom)))
+            .background(Brush.radialGradient(listOf(C.glow, Color.Transparent))),
+        content = content,
+    )
+}
+
+/**
+ * Élément cliquable au toucher comme à la télécommande : au focus il grossit un peu et prend un contour blanc.
+ * [colors] : dégradé de fond ; [focusColors] : dégradé quand il a le focus (sinon le même).
+ */
+@Composable
+fun Tile(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
+    colors: List<Color> = C.small,
+    focusColors: List<Color>? = null,
+    focusScale: Float = 1.05f,
+    content: @Composable BoxScope.(focused: Boolean) -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val bg = if (focused && focusColors != null) focusColors else colors
+    Box(
+        modifier
+            .scale(if (focused) focusScale else 1f)
+            .clip(shape)
+            .background(if (bg.size > 1) Brush.linearGradient(bg) else SolidColor(bg.first()))
+            .then(if (focused) Modifier.border(3.dp, C.focus, shape) else Modifier)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+    ) { content(focused) }
+}
+
+/** Logo de la marque (pastille carrée). */
+@Composable
+fun Logo(size: Dp) {
+    Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(size))
+}
+
+/** En-tête d'écran : logo, titre, heure. */
+@Composable
+fun Header(title: String, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(60_000L - now % 60_000L) } }
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Logo(40.dp)
+        Spacer(Modifier.width(14.dp))
+        Text(title, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 26.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        trailing()
+        Spacer(Modifier.width(16.dp))
+        Text(clock(now), color = C.text, fontFamily = Sora, fontWeight = FontWeight.SemiBold, fontSize = 22.sp, maxLines = 1)
+    }
+}
+
+fun clock(now: Long): String = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(now))
+
+fun date(ms: Long, pattern: String = "d MMM yyyy"): String =
+    java.text.SimpleDateFormat(pattern, java.util.Locale.forLanguageTag(Str.lang.code + "-u-nu-latn")).format(java.util.Date(ms))
+
+@Composable
+fun Label(text: String, size: TextUnit = 14.sp, color: Color = C.text, weight: FontWeight = FontWeight.Medium, lines: Int = 1, modifier: Modifier = Modifier) {
+    Text(text, color = color, fontFamily = Manrope, fontWeight = weight, fontSize = size, maxLines = lines, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+@Composable
+fun Loading(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(color = C.accent, strokeWidth = 3.dp, modifier = Modifier.size(42.dp))
+    }
+}
+
+/** Message centré, cliquable (ex. « Réessayer »). */
+@Composable
+fun Message(text: String, onClick: (() -> Unit)? = null) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        if (onClick != null) Tile(onClick, colors = listOf(C.card)) {
+            Label(text, 15.sp, C.text2, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+        } else Label(text, 15.sp, C.text2)
+    }
+}
+
+/** Champ texte sombre, utilisable à la télécommande (OK ouvre le clavier). */
+@Composable
+fun Field(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    password: Boolean = false,
+    focusRequester: FocusRequester? = null,
+    imeAction: ImeAction = ImeAction.Next,
+    onDone: () -> Unit = {},
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = true,
+        interactionSource = interaction,
+        textStyle = TextStyle(color = C.text, fontFamily = Manrope, fontSize = 16.sp),
+        cursorBrush = SolidColor(C.accent),
+        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Text, imeAction = imeAction),
+        keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }, onSearch = { onDone() }),
+        modifier = modifier
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .height(46.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(C.card)
+            .border(if (focused) 2.dp else 1.dp, if (focused) C.focus else C.line, RoundedCornerShape(12.dp)),
+        decorationBox = { inner ->
+            Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty()) Label(placeholder, 15.sp, C.text3)
+                inner()
+            }
+        },
+    )
+}
+
+/** Boîte de dialogue simple : titre + liste de choix. */
+@Composable
+fun ChoiceDialog(title: String, options: List<Pair<String, () -> Unit>>, onDismiss: () -> Unit) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(80); runCatching { first.requestFocus() } }
+    Box(Modifier.fillMaxSize().background(Color(0xCC000000)).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onDismiss), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(420.dp).clip(RoundedCornerShape(20.dp)).background(C.panel).border(1.dp, C.line, RoundedCornerShape(20.dp)).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            options.forEachIndexed { i, (label, action) ->
+                Tile(action, Modifier.fillMaxWidth().height(48.dp).then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                    colors = listOf(C.card), focusColors = C.live, focusScale = 1.02f) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) { Label(label, 16.sp, weight = FontWeight.SemiBold) }
+                }
+            }
+        }
+    }
+}
+
+/** Demande le focus initial (télécommande) une fois l'écran composé. */
+@Composable
+fun InitialFocus(requester: FocusRequester, key: Any? = Unit) {
+    LaunchedEffect(key) {
+        repeat(10) {
+            delay(60)
+            if (runCatching { requester.requestFocus() }.getOrDefault(false)) return@LaunchedEffect
+        }
+    }
+}

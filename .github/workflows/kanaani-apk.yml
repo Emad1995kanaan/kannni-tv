@@ -57,13 +57,11 @@ jobs:
               cp "$f" "../out/$2/$1-$VERSION-$abi.apk"
             done
           }
-          # 1) كنعاني العادي (الإعدادات من brand.properties)
+          # 1) كنعاني IBO: التطبيق الجديد الخفيف (مجلد ibo-app)، بيحمّل كل فئة وقت فتحها
+          (cd ../ibo-app && chmod +x gradlew && ./gradlew assembleRelease --console=plain --stacktrace && collect Kanaani-IBO ibo)
+          # 2) كنعاني العادي (الإعدادات من android-native/brand.properties)
           ./gradlew assembleRelease --console=plain --stacktrace
           collect Kanaani classic
-          # 2) كنعاني بشكل IBO: تطبيق منفصل بمعرّف خاص، بينزل جنب الأول
-          rm -rf app/build/outputs/apk/release
-          ./gradlew assembleRelease --console=plain --stacktrace -PBRAND_HOME_STYLE=ibo -PBRAND_APP_ID=com.kanaani.tv.ibo
-          collect Kanaani-IBO ibo
           ls -laR ../out
 
       - name: Upload Kanaani APKs

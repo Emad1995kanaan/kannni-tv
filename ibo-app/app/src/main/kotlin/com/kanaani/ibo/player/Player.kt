@@ -1,0 +1,96 @@
+package com.kanaani.ibo.player
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.kanaani.ibo.data.Http
+
+/**
+ * Lecteur unique de l'application : l'aperçu du Direct et le plein écran affichent le MÊME lecteur, donc passer en
+ * plein écran ne recharge pas le flux (comme IBO Player).
+ */
+object Playback {
+    private var exo: ExoPlayer? = null
+
+    /** Adresse en cours de lecture (null = rien). */
+    var current by mutableStateOf<String?>(null)
+        private set
+    var error by mutableStateOf(false)
+        private set
+    var buffering by mutableStateOf(false)
+        private set
+    /** Fin de la vidéo atteinte (épisode suivant). */
+    var ended by mutableStateOf(false)
+        private set
+
+    private var triedHls = false
+
+    fun player(ctx: Context): ExoPlayer = exo ?: build(ctx.applicationContext).also { exo = it }
+
+    private fun build(ctx: Context): ExoPlayer {
+        val load = DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 50_000, 1_500, 3_000).build()
+        val p = ExoPlayer.Builder(ctx)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(Http.client)))
+            .setLoadControl(load)
+            .build()
+        p.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
+                ended = state == Player.STATE_ENDED
+                if (state == Player.STATE_READY) error = false
+            }
+            override fun onPlayerError(e: PlaybackException) {
+                // Direct en .ts refusé : on retente une fois en HLS (.m3u8), que beaucoup de serveurs servent aussi.
+                val url = current
+                if (url != null && url.endsWith(".ts") && !triedHls) {
+                    triedHls = true
+                    start(url.removeSuffix(".ts") + ".m3u8", keepFallbackState = true)
+                } else error = true
+            }
+        })
+        return p
+    }
+
+    /** Lance [url] (si ce n'est pas déjà elle). */
+    fun play(ctx: Context, url: String, startMs: Long = 0) {
+        player(ctx)
+        if (url == current && !error) { exo?.playWhenReady = true; return }
+        triedHls = false
+        start(url, startMs = startMs)
+    }
+
+    private fun start(url: String, startMs: Long = 0, keepFallbackState: Boolean = false) {
+        val p = exo ?: return
+        if (!keepFallbackState) current = url
+        error = false
+        ended = false
+        val item = MediaItem.Builder().setUri(url).apply { if (url.endsWith(".m3u8")) setMimeType(MimeTypes.APPLICATION_M3U8) }.build()
+        p.setMediaItem(item, startMs)
+        p.prepare()
+        p.playWhenReady = true
+    }
+
+    fun retry(ctx: Context) { current?.let { u -> current = null; play(ctx, u) } }
+
+    fun stop() {
+        exo?.stop()
+        exo?.clearMediaItems()
+        current = null
+        error = false
+    }
+
+    fun release() {
+        exo?.release()
+        exo = null
+        current = null
+    }
+}
