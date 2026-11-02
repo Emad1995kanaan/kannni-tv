@@ -506,8 +506,8 @@ private fun UltraTvAppRoot(sidebarPosition: SidebarPosition) {
                 // Le lecteur est plein écran : ni rail ni marge (sinon le rail volerait le focus et recouvrirait la vidéo).
                 val backEntry by nav.currentBackStackEntryAsState()
                 val fullscreen = backEntry?.destination?.route?.startsWith("player") == true
-                // Accueil IBO : les tuiles occupent tout l'écran, sans rail (il revient sur les autres écrans).
-                val noRail = fullscreen || (com.ultratv.tv.nativeapp.Brand.iboHome && backEntry?.destination?.route == Routes.HOME)
+                // Version IBO : aucun rail ; on navigue depuis les tuiles de l'accueil et on y revient avec Retour.
+                val noRail = fullscreen || com.ultratv.tv.nativeapp.Brand.iboHome
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         Modifier

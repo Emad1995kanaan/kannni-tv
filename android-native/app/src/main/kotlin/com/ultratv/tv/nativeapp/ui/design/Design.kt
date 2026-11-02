@@ -70,15 +70,17 @@ object Ux {
     /** Dérivé de la navigation (voir `isPlayerShown`), jamais d'un compteur d'entrées/sorties. */
     var playerActive by mutableStateOf(false)
     private val light: Boolean get() = com.ultratv.tv.nativeapp.ui.theme.isLightEffective(themeLight, playerActive)
+    /** Version « IBO » : surfaces bleu nuit au lieu du noir. */
+    private val ibo: Boolean = com.ultratv.tv.nativeapp.Brand.iboHome
 
     // Surfaces (sombre → clair : maquettes Accueil / AccueilClair / SidebarClair)
-    val Bg: Color get() = if (light) Color(0xFFF4F3EF) else Color(0xFF0A0A0C)
-    val Rail: Color get() = if (light) Color(0xFFFFFFFF) else Color(0xFF0F0F12)
-    val Surface: Color get() = if (light) Color(0xFFECEAE5) else Color(0xFF1C1C21)
-    val Surface2: Color get() = if (light) Color(0xFFD9D6CF) else Color(0xFF26262D)
-    val SurfaceDeep: Color get() = if (light) Color(0xFFFFFFFF) else Color(0xFF141418)
+    val Bg: Color get() = if (light) Color(0xFFF4F3EF) else if (ibo) Color(0xFF070D24) else Color(0xFF0A0A0C)
+    val Rail: Color get() = if (light) Color(0xFFFFFFFF) else if (ibo) Color(0xFF0A1230) else Color(0xFF0F0F12)
+    val Surface: Color get() = if (light) Color(0xFFECEAE5) else if (ibo) Color(0xFF16214D) else Color(0xFF1C1C21)
+    val Surface2: Color get() = if (light) Color(0xFFD9D6CF) else if (ibo) Color(0xFF213063) else Color(0xFF26262D)
+    val SurfaceDeep: Color get() = if (light) Color(0xFFFFFFFF) else if (ibo) Color(0xFF0E1736) else Color(0xFF141418)
     /** Fond des visuels de remplacement (affiches, logos sans image). */
-    val Tone: Color get() = if (light) Color(0xFFE3E1DB) else Color(0xFF1F1F25)
+    val Tone: Color get() = if (light) Color(0xFFE3E1DB) else if (ibo) Color(0xFF1A2657) else Color(0xFF1F1F25)
 
     // Texte
     val Text: Color get() = if (light) Color(0xFF16151A) else Color(0xFFF5F5F7)
@@ -89,9 +91,9 @@ object Ux {
     val Muted2: Color get() = if (light) Color(0xFFB0AEB5) else Color(0xFF52525B)
     val Err: Color get() = if (light) Color(0xFFB3261E) else Color(0xFFFF8A8A)
 
-    val Line: Color get() = if (light) Color(0xFFD9D6CF) else Color(0xFF3F3F46)
-    val LineKey: Color get() = if (light) Color(0xFFB0AEB5) else Color(0xFF52525B)
-    val Scrim: Color get() = if (light) Color(0xCCF4F3EF) else Color(0xB80A0A0C)
+    val Line: Color get() = if (light) Color(0xFFD9D6CF) else if (ibo) Color(0xFF2C3B75) else Color(0xFF3F3F46)
+    val LineKey: Color get() = if (light) Color(0xFFB0AEB5) else if (ibo) Color(0xFF3D4E8E) else Color(0xFF52525B)
+    val Scrim: Color get() = if (light) Color(0xCCF4F3EF) else if (ibo) Color(0xB8070D24) else Color(0xB80A0A0C)
 
     // Focus : sombre = fond blanc / texte noir ; clair = fond encre / texte blanc ; l'anneau reste accent.
     val Cta: Color get() = if (light) Color(0xFF16151A) else Color(0xFFFFFFFF)

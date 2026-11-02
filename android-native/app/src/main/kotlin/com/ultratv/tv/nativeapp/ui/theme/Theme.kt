@@ -11,11 +11,12 @@ import com.ultratv.tv.nativeapp.ui.design.Ux
 
 private val Accent = Color(0xFFD91E2B)
 
+private val iboTheme = com.ultratv.tv.nativeapp.Brand.iboHome
 private val Dark = darkColorScheme(
     primary = Accent, onPrimary = Color.White,
-    background = Color(0xFF0A0A0C), onBackground = Color(0xFFF5F5F7),
-    surface = Color(0xFF141418), onSurface = Color(0xFFF5F5F7),
-    surfaceVariant = Color(0xFF1C1C21), onSurfaceVariant = Color(0xFFC4C4CC),
+    background = if (iboTheme) Color(0xFF070D24) else Color(0xFF0A0A0C), onBackground = Color(0xFFF5F5F7),
+    surface = if (iboTheme) Color(0xFF0E1736) else Color(0xFF141418), onSurface = Color(0xFFF5F5F7),
+    surfaceVariant = if (iboTheme) Color(0xFF16214D) else Color(0xFF1C1C21), onSurfaceVariant = Color(0xFFC4C4CC),
     border = Color(0xFF3F3F46),
     inverseSurface = Color.White, inverseOnSurface = Color(0xFF0A0A0C),
 )

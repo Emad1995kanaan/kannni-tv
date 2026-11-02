@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -187,6 +188,11 @@ fun CatalogGridScreen(kind: CatalogKind, onOpen: (Long) -> Unit) {
 
     val touch = com.ultratv.tv.nativeapp.ui.mobile.LocalTouch.current
     val widthDp = com.ultratv.tv.nativeapp.ui.common.LocalUiWidthDp.current
+    // Version IBO sur téléviseur : catégories en colonne à gauche, grille d'affiches à droite.
+    if (com.ultratv.tv.nativeapp.Brand.iboHome && !touch) {
+        IboCatalogLayout(kind, title, chipsOrNull, selected, items, onSelect = { vm.select(it) }, onOpen = onOpen)
+        return
+    }
     com.ultratv.tv.nativeapp.ui.mobile.TouchRefresh {
     Column(
         Modifier.fillMaxSize().then(if (touch) Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp) else Modifier.padding(start = 72.design, end = 96.design, top = 54.design)),
@@ -234,6 +240,79 @@ fun CatalogGridScreen(kind: CatalogKind, onOpen: (Long) -> Unit) {
             }
         }
     }
+    }
+}
+
+/** Mise en page « IBO » : colonne de catégories (Tous + catégories) et grille d'affiches de la catégorie choisie. */
+@Composable
+private fun IboCatalogLayout(
+    kind: CatalogKind,
+    title: String,
+    chipsOrNull: List<CategoryChip>?,
+    selected: String?,
+    items: androidx.paging.compose.LazyPagingItems<PosterItem>,
+    onSelect: (String?) -> Unit,
+    onOpen: (Long) -> Unit,
+) {
+    val D = LocalDs.current
+    val chips = chipsOrNull.orEmpty()
+    val firstCat = remember { FocusRequester() }
+    var firstCatFocused by remember { mutableStateOf(false) }
+    RequestInitialFocus(firstCat, hasFocus = { firstCatFocused })
+    val selectedName = if (selected == null) D.allChip else chips.firstOrNull { it.remoteId == selected }?.name ?: D.allChip
+    Row(Modifier.fillMaxSize().padding(start = 56.design, end = 56.design, top = 48.design), horizontalArrangement = Arrangement.spacedBy(40.design)) {
+        Column(Modifier.width(440.design).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(24.design)) {
+            Text(title, color = Ux.Text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 52.spx, maxLines = 1)
+            androidx.compose.foundation.lazy.LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.design),
+                contentPadding = PaddingValues(bottom = 48.design),
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            ) {
+                item(key = "all") {
+                    IboCategoryItem(D.allChip, selected == null,
+                        Modifier.focusRequester(firstCat).onFocusChanged { firstCatFocused = it.isFocused }) { onSelect(null) }
+                }
+                items(chips.size, key = { chips[it].remoteId }) { i ->
+                    val c = chips[i]
+                    IboCategoryItem(c.name, selected == c.remoteId, Modifier) { onSelect(c.remoteId) }
+                }
+            }
+        }
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(24.design)) {
+            Text(selectedName, color = Ux.Text2, fontFamily = Sora, fontWeight = FontWeight.SemiBold, fontSize = 34.spx,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 14.design))
+            when {
+                chipsOrNull == null || (items.itemCount == 0 && items.loadState.refresh is androidx.paging.LoadState.Loading) -> RowsSkeleton(false)
+                items.itemCount == 0 -> Text(if (kind == CatalogKind.MOVIES) D.noMovies else D.noSeries, color = Ux.Text3, fontFamily = Manrope, fontSize = 24.spx, maxLines = 2)
+                else -> {
+                    val safeKey = com.ultratv.tv.nativeapp.ui.common.rememberSafeItemKey(items) { it.id }
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(5),
+                        horizontalArrangement = Arrangement.spacedBy(28.design),
+                        verticalArrangement = Arrangement.spacedBy(28.design),
+                        contentPadding = PaddingValues(top = 8.design, bottom = 54.design),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        items(count = items.itemCount, key = safeKey, contentType = { "poster" }) { i ->
+                            val it = items[i]
+                            if (it != null) PosterCell(it, Modifier) { onOpen(it.id) }
+                            else androidx.compose.foundation.layout.Spacer(Modifier.height(1.design))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IboCategoryItem(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    FocusSurface(onClick = onClick, shape = RoundedCornerShape(16.design), bg = if (selected) Ux.Accent else Ux.Surface,
+        focusedScale = 1.02f, ringWidth = 4.design, modifier = modifier.fillMaxWidth().height(78.design)) { f ->
+        Box(Modifier.fillMaxSize().padding(horizontal = 28.design), contentAlignment = Alignment.CenterStart) {
+            Text(label, color = if (f) Ux.TextOnLight else if (selected) Ux.OnAccent else Ux.Text, fontFamily = Manrope,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, fontSize = 26.spx, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
