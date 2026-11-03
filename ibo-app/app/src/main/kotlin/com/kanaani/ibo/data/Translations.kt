@@ -30,7 +30,14 @@ object Translations {
     }
 
     /** Nom affiché d'une catégorie du serveur dans la langue de l'application. */
-    fun category(name: String): String = if (Store.language == "he") he[name.trim()] ?: name else name
+    fun category(name: String): String = if (Store.language == "he" && forThisServer()) he[name.trim()] ?: name else name
+
+    /** Traductions faites pour ces serveurs seulement : ailleurs, les catégories gardent leur nom d'origine. */
+    private val SERVERS = listOf("amlive.cc", "kanaani.site")
+    private fun forThisServer(): Boolean {
+        val h = runCatching { java.net.URI(Store.session?.host ?: return false).host?.lowercase() }.getOrNull() ?: return false
+        return SERVERS.any { h == it || h.endsWith(".$it") }
+    }
 
     suspend fun refresh() {
         val url = BuildConfig.I18N_URL
