@@ -69,6 +69,13 @@ object Messages {
         }
     }
 
+    /** Message reçu du panneau de contrôle (si ntfy ne l'a pas déjà livré). */
+    fun fromPanel(id: String, text: String, sent: Long, until: Long, liveOnly: Boolean) {
+        val t = text.trim()
+        if (t.isEmpty() || until <= System.currentTimeMillis() || list.any { it.id == id || (it.text == t && kotlin.math.abs(it.sent - sent) < 120_000) }) return
+        list = (list + Msg(id, t, sent, until, liveOnly)).sortedBy { it.sent }.takeLast(20)
+    }
+
     private fun handle(id: String, raw: String, sentAt: Long) {
         var text = raw
         var duration = 60 * 60_000L

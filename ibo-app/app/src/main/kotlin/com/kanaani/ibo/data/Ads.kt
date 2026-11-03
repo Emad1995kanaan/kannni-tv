@@ -29,10 +29,18 @@ object Ads {
         private set
 
     private var loadedAt = 0L
+    /** Publicités reçues du panneau de contrôle : ads.json (GitHub) n'est plus lu. */
+    private var fromPanel = false
+
+    fun fromPanel(interval: Int, list: List<String>) {
+        fromPanel = true
+        this.interval = interval.coerceIn(3, 120)
+        if (list != billboard) billboard = list
+    }
 
     suspend fun refresh() {
         val url = BuildConfig.ADS_URL
-        if (url.isBlank() || System.currentTimeMillis() - loadedAt < 10 * 60_000L) return
+        if (fromPanel || url.isBlank() || System.currentTimeMillis() - loadedAt < 10 * 60_000L) return
         val root = withContext(Dispatchers.IO) {
             runCatching {
                 // Paramètre horaire : contourne le cache du CDN (quelques minutes au plus).

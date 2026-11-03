@@ -31,6 +31,9 @@ val msgTopic = brand("BRAND_MSG_TOPIC", "")
 val tmdbKey = brand("BRAND_TMDB_KEY", "")
 // Traductions des catégories (hébreu), modifiables sans mise à jour.
 val i18nUrl = brand("BRAND_I18N_URL", "")
+// Panneau de contrôle (Cloudflare) : adresse et identifiant de l'application.
+val panelUrl = brand("BRAND_PANEL_URL", "")
+val panelApp = brand("BRAND_PANEL_APP", "")
 
 // Version : fichier VERSION à la racine du dépôt (x.y.z) → versionCode = x*10000 + y*100 + z.
 val versionName0: String = rootProject.file("../VERSION").readText().trim()
@@ -57,6 +60,8 @@ android {
         buildConfigField("String", "MSG_TOPIC", javaString(msgTopic))
         buildConfigField("String", "TMDB_KEY", javaString(tmdbKey))
         buildConfigField("String", "I18N_URL", javaString(i18nUrl))
+        buildConfigField("String", "PANEL_URL", javaString(panelUrl))
+        buildConfigField("String", "PANEL_APP", javaString(panelApp))
     }
 
     signingConfigs {

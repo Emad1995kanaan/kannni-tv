@@ -82,7 +82,18 @@ fun cleanChannel(name: String): String = name.replace(channelPrefix, "").ifBlank
  * API Xtream Codes, chargée À LA DEMANDE (comme IBO Player) : rien n'est téléchargé d'avance ; chaque catégorie est
  * lue au moment où on l'ouvre puis gardée en mémoire pour la session.
  */
-class Xtream(val hosts: List<String>, val username: String, val password: String) {
+class Xtream(hosts: List<String>, val username: String, val password: String) {
+    /** Principal puis secours ; mis à jour par le panneau de contrôle. */
+    @Volatile var hosts: List<String> = hosts
+        private set
+
+    fun updateHosts(list: List<String>) {
+        if (list.isEmpty() || list == hosts) return
+        hosts = list
+        if (host !in list) host = list.first()
+        primaryTried = false
+    }
+
     private val cache = ConcurrentHashMap<String, Any>()
 
     /**

@@ -17,9 +17,12 @@ fun App(onExit: () -> Unit) {
     // Messages instantanés (ntfy) : abonnement tant que l'application est ouverte.
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Messages.run() }
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Translations.refresh() }
+    // Panneau de contrôle : à l'ouverture puis toutes les 10 minutes.
+    LaunchedEffect(Unit) { while (true) { com.kanaani.ibo.data.Panel.refresh(); kotlinx.coroutines.delay(10 * 60_000L) } }
     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
         Screens(onExit)
         UpdateDialog()
+        NoticeDialog()
     }
 }
 

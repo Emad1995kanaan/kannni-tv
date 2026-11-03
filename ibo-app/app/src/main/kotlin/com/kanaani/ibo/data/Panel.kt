@@ -1,0 +1,79 @@
+package com.kanaani.ibo.data
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.kanaani.ibo.Brand
+import com.kanaani.ibo.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
+import okhttp3.Request
+
+/** Message de maintenance affiché à l'ouverture. [until] = 0 : sans fin. */
+data class Notice(val text: String, val until: Long)
+
+/**
+ * Lien avec le panneau de contrôle (Cloudflare) : publicités, hôtes, messages et avis de maintenance, lus à l'ouverture
+ * puis toutes les 10 minutes. Rien n'est bloquant : sans réponse, on garde la dernière configuration reçue (hôtes
+ * gardés sur l'appareil) puis celle de l'application.
+ */
+object Panel {
+    var notice by mutableStateOf<Notice?>(null)
+        private set
+    private var sp: SharedPreferences? = null
+
+    fun init(ctx: Context) { sp = ctx.getSharedPreferences("panel", Context.MODE_PRIVATE) }
+
+    /** Hôtes : liste du panneau (gardée sur l'appareil) sinon ceux de l'application. */
+    fun hosts(): List<String> {
+        val saved = sp?.getString("hosts", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") }.orEmpty()
+        return saved.ifEmpty { Brand.hosts }
+    }
+
+    suspend fun refresh() {
+        val base = BuildConfig.PANEL_URL.trimEnd('/')
+        if (base.isBlank()) return
+        val root = withContext(Dispatchers.IO) {
+            runCatching {
+                Http.client.newCall(Request.Builder().url("$base/api/config/${BuildConfig.PANEL_APP}").build()).execute().use { r ->
+                    if (!r.isSuccessful) null else Json.parseToJsonElement(r.body.string()) as? JsonObject
+                }
+            }.getOrNull()
+        } ?: return
+        runCatching {
+            // Publicités (remplacent ads.json de GitHub).
+            (root["ads"] as? JsonObject)?.let { a ->
+                val list = (a["billboard"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                Ads.fromPanel((a["interval"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 10, list)
+            }
+            // Hôtes.
+            val hosts = (root["hosts"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim()?.trimEnd('/') }
+                .filter { it.startsWith("http") }.distinct()
+            if (hosts.isNotEmpty()) {
+                sp?.edit()?.putString("hosts", hosts.joinToString("\n"))?.apply()
+                Store.session?.updateHosts(hosts)
+            }
+            // Avis de maintenance.
+            notice = (root["notice"] as? JsonObject)?.let { n ->
+                val text = (n["text"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+                val until = (n["until"] as? JsonPrimitive)?.longOrNull ?: 0L
+                if (text.isEmpty() || (until > 0 && until < System.currentTimeMillis())) null else Notice(text, until)
+            }
+            // Messages (en plus de ntfy, s'il n'a pas pu les livrer).
+            (root["messages"] as? JsonArray).orEmpty().forEach { e ->
+                val o = e as? JsonObject ?: return@forEach
+                fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
+                Messages.fromPanel("p" + (s("id") ?: return@forEach), s("text").orEmpty(), s("sent")?.toLongOrNull() ?: 0L,
+                    s("until")?.toLongOrNull() ?: 0L, s("liveOnly") == "true")
+            }
+        }
+    }
+}
