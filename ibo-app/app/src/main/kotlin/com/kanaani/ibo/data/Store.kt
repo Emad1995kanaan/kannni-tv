@@ -93,7 +93,13 @@ object Store {
         language = sp.getString("lang", "ar") ?: "ar"
         val u = sp.getString("user", null)
         val p = sp.getString("pass", null)
-        session = if (!u.isNullOrEmpty() && p != null && Brand.host.isNotEmpty()) Xtream(Panel.hosts(), u, p) else null
+        val th = sp.getString("trial_host", null)
+        session = when {
+            u.isNullOrEmpty() || p == null || Brand.host.isEmpty() -> null
+            // Compte d'essai : uniquement le serveur de sa ligne (le panneau peut le changer, voir Trial.keepAlive)
+            th != null && sp.getString("trial_u", null) != null -> Xtream(listOf(th), u, p)
+            else -> Xtream(Panel.hosts(), u, p)
+        }
         favorites = decode(sp.getString("favorites", null))
         categoryOrders = listOf("live", "movie", "series").associateWith { k ->
             sp.getString("order_$k", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
@@ -185,13 +191,29 @@ object Store {
         sp.edit().putString("lang", code).apply()
     }
 
-    fun login(x: Xtream) {
-        sp.edit().putString("user", x.username).putString("pass", x.password).apply()
+    fun login(x: Xtream, trial: Pair<String, String>? = null) {
+        val e = sp.edit().putString("user", x.username).putString("pass", x.password)
+        if (trial != null) e.putString("trial_u", trial.first).putString("trial_p", trial.second).putString("trial_host", x.hosts.first())
+        else e.remove("trial_u").remove("trial_p").remove("trial_host")
+        e.apply()
         session = x
     }
 
+    /** Identifiants d'essai (ceux donnés par le panneau), null pour un abonnement normal. */
+    fun trialLogin(): Pair<String, String>? {
+        val u = sp.getString("trial_u", null) ?: return null
+        return u to (sp.getString("trial_p", null) ?: return null)
+    }
+
+    /** Le panneau a déplacé le compte d'essai sur une autre ligne : nouvelle session. */
+    fun trialSwitch(r: Trial.Result) {
+        sp.edit().putString("user", r.user).putString("pass", r.pass).putString("trial_host", r.host).apply()
+        session = Xtream(listOf(r.host), r.user, r.pass)
+    }
+
     fun logout() {
-        sp.edit().remove("user").remove("pass").remove("favorites").remove("watching").apply()
+        sp.edit().remove("user").remove("pass").remove("favorites").remove("watching").remove("trial_u").remove("trial_p").remove("trial_host").apply()
+        Trial.block = null
         watching = emptyList()
         // L'ordre des catégories est une préférence de l'appareil : il reste après une déconnexion.
         favorites = emptyList()

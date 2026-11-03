@@ -174,4 +174,9 @@ object Str {
     val problemInstall get() = t("Android could not open the installer.", "أندرويد ما قدر يفتح شاشة التثبيت.", "אנדרואיד לא הצליח לפתוח את ההתקנה.")
     val retryUpdate get() = t("Try again", "جرّب مرة ثانية", "נסו שוב")
     val ok get() = t("OK", "موافق", "אישור")
+    val trialEnded get() = t("Your trial has ended. To subscribe, contact us on WhatsApp.", "انتهت فترة التجربة. للاشتراك تواصل معنا على واتساب.", "תקופת הניסיון הסתיימה. להרשמה פנו אלינו בוואטסאפ.")
+    val trialFull get() = t("The trial is full right now. Try again a bit later.", "التجربة ممتلئة حالياً. جرّب كمان شوي.", "הניסיון מלא כרגע. נסו שוב מאוחר יותר.")
+    val trialDevice get() = t("This trial account is open on another device (one device at a time).", "الحساب التجريبي مفتوح على جهاز تاني (جهاز واحد بنفس الوقت).", "חשבון הניסיון פתוח במכשיר אחר (מכשיר אחד בכל פעם).")
+    val trialOff get() = t("This trial account is stopped.", "الحساب التجريبي موقوف.", "חשבון הניסיון הושהה.")
+    val whatsapp get() = t("WhatsApp", "واتساب", "וואטסאפ")
 }

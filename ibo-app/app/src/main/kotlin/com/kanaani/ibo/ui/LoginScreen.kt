@@ -57,7 +57,14 @@ fun LoginScreen() {
         checking = true
         error = null
         scope.launch {
-            val x = Xtream(com.kanaani.ibo.data.Panel.hosts(), user.trim(), pass)
+            // Compte d'essai du panneau d'abord ; sinon abonnement normal.
+            val tr = com.kanaani.ibo.data.Trial.login(user.trim(), pass)
+            if (!tr.ok && tr.error != "none" && tr.error != "net") {
+                error = trialMessage(tr)
+                checking = false
+                return@launch
+            }
+            val x = if (tr.ok) Xtream(listOf(tr.host), tr.user, tr.pass) else Xtream(com.kanaani.ibo.data.Panel.hosts(), user.trim(), pass)
             val acc = x.account()
             val expired = acc?.expiresAt?.let { it < System.currentTimeMillis() } == true
             val status = acc?.status?.lowercase()
@@ -69,7 +76,7 @@ fun LoginScreen() {
                 else -> null
             }
             checking = false
-            if (error == null) Store.login(x)
+            if (error == null) Store.login(x, if (tr.ok) user.trim() to pass else null)
         }
     }
 
@@ -131,4 +138,15 @@ fun LoginScreen() {
             }
         }
     }
+}
+
+/** Texte d'un refus d'essai (fin, plein, autre appareil…) avec le numéro WhatsApp. */
+fun trialMessage(r: com.kanaani.ibo.data.Trial.Result): String {
+    val t = when (r.error) {
+        "expired" -> Str.trialEnded
+        "full" -> Str.trialFull
+        "device" -> Str.trialDevice
+        else -> Str.trialOff
+    }
+    return if (r.wa.isNotBlank()) "$t\n${Str.whatsapp}: \u200E${r.wa}" else t
 }

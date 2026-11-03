@@ -43,6 +43,9 @@ object Panel {
         return p.getString("device", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("device", it).apply() }
     }
 
+    fun deviceId(): String = device()
+    fun kind(): String = if (tv) "tv" else "phone"
+
     /** Hôtes : liste du panneau (gardée sur l'appareil) sinon ceux de l'application. */
     fun hosts(): List<String> {
         val saved = sp?.getString("hosts", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") }.orEmpty()
@@ -81,7 +84,7 @@ object Panel {
                 .filter { it.startsWith("http") }.distinct()
             if (hosts.isNotEmpty()) {
                 sp?.edit()?.putString("hosts", hosts.joinToString("\n"))?.apply()
-                Store.session?.updateHosts(hosts)
+                if (Store.trialLogin() == null) Store.session?.updateHosts(hosts)
             }
             // Avis de maintenance.
             notice = (root["notice"] as? JsonObject)?.let { n ->

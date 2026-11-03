@@ -44,7 +44,9 @@ object AccountCache {
 
 fun expiryLine(a: Account?): String {
     a ?: return ""
-    val exp = a.expiresAt ?: return "${Str.expires}: ${Str.unlimited}"
+    // Compte d'essai : c'est la fin de l'essai qui compte, pas celle de la ligne du serveur.
+    val trialEnd = if (com.kanaani.ibo.data.Store.trialLogin() != null) com.kanaani.ibo.data.Trial.expires.takeIf { it > 0 } else null
+    val exp = trialEnd ?: a.expiresAt ?: return "${Str.expires}: ${Str.unlimited}"
     val days = ((exp - System.currentTimeMillis()).coerceAtLeast(0) + 86_399_999L) / 86_400_000L
     return "${Str.expires} ${date(exp)} · $days ${Str.daysLeft}"
 }
