@@ -56,8 +56,14 @@ object Layouts {
     }
 
     /** Liste reçue avec la configuration du panneau : applique l'ordre suivi s'il a changé. */
-    suspend fun onConfig(refs: List<LayoutRef>) {
+    suspend fun onConfig(refs: List<LayoutRef>, assigned: Pair<Long, Long>? = null) {
         list = refs
+        // Ordre envoyé à ce client en particulier : appliqué même s'il avait rangé lui-même.
+        if (assigned != null && assigned.second > (sp?.getLong("assigned_sent", 0L) ?: 0L)) {
+            sp?.edit()?.putLong("assigned_sent", assigned.second)?.apply()
+            mode = assigned.first.toString()
+            sp?.edit()?.putString("mode", mode)?.remove("applied_v")?.apply()
+        }
         val target = target() ?: return
         if (sp?.getLong("applied_v", -1L) == target.v && sp?.getLong("applied_id", -1L) == target.id) return
         fetchAndApply(target)

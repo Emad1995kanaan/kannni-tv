@@ -60,7 +60,9 @@ object Panel {
                 // « Je suis actif » au plus toutes les 25 minutes (limite d'écritures du panneau).
                 val now = System.currentTimeMillis()
                 val ping = now - (sp?.getLong("ping", 0L) ?: 0L) > 25 * 60_000L
-                val q = if (ping) "?d=${device()}&v=${BuildConfig.VERSION_NAME}&k=${if (tv) "tv" else "phone"}" else ""
+                // Identifiant du client : pour un ordre envoyé à ce client en particulier (panneau › Ordre).
+                val who = java.net.URLEncoder.encode(Store.trialLogin()?.first ?: Store.session?.username ?: "", "UTF-8")
+                val q = (if (ping) "?d=${device()}&v=${BuildConfig.VERSION_NAME}&k=${if (tv) "tv" else "phone"}&u=$who" else "?u=$who")
                 Http.client.newCall(Request.Builder().url("$base/api/config/${BuildConfig.PANEL_APP}$q").build()).execute().use { r ->
                     if (ping && r.isSuccessful) sp?.edit()?.putLong("ping", now)?.apply()
                     if (!r.isSuccessful) null else Json.parseToJsonElement(r.body.string()) as? JsonObject
@@ -93,7 +95,11 @@ object Panel {
                 if (text.isEmpty() || (until > 0 && until < System.currentTimeMillis())) null else Notice(text, until)
             }
             // Ordres prêts (catégories, chaînes) : celui que suit l'appareil est mis à jour s'il a changé.
-            (root["layouts"] as? JsonArray)?.let { Layouts.onConfig(Layouts.parseRefs(it)) }
+            (root["layouts"] as? JsonArray)?.let { arr ->
+                val a = root["assigned"] as? JsonObject
+                val assigned = a?.let { o -> (o["id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.let { id -> id to ((o["sent"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: 0L) } }
+                Layouts.onConfig(Layouts.parseRefs(arr), assigned)
+            }
             // Messages (en plus de ntfy, s'il n'a pas pu les livrer).
             (root["messages"] as? JsonArray).orEmpty().forEach { e ->
                 val o = e as? JsonObject ?: return@forEach
