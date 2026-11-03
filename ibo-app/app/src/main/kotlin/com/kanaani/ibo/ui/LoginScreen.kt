@@ -47,8 +47,8 @@ fun LoginScreen() {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val userFocus = remember { FocusRequester() }
-    // Clavier numérique par défaut (identifiants Xtream habituels) ; « ABC » repasse au clavier complet.
-    var numeric by remember { mutableStateOf(true) }
+    // Clavier complet par défaut (lettres et chiffres) ; « 123 » passe au clavier numérique. Mot de passe visible.
+    var numeric by remember { mutableStateOf(false) }
     val keyboardCtl = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     InitialFocus(userFocus)
 
@@ -116,7 +116,7 @@ fun LoginScreen() {
                         }
                     }
                 }
-                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = true, masked = false, imeAction = ImeAction.Done, numeric = numeric, onDone = submit)
+                Field(pass, { pass = it; error = null }, Str.password, Modifier.fillMaxWidth(), password = false, masked = false, imeAction = ImeAction.Done, numeric = numeric, onDone = submit)
                 error?.let { Label(it, 13.sp, C.error, FontWeight.SemiBold, lines = 3) }
                 Tile(submit, Modifier.fillMaxWidth().height(48.dp), RoundedCornerShape(12.dp), colors = C.live, focusScale = 1.03f) { f ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
