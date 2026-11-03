@@ -223,17 +223,18 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         )) { dialog = null }
         "layout" -> {
             val L = com.kanaani.ibo.data.Layouts
-            val opts = L.list.map { r ->
+            val opts: List<Pair<String, () -> Unit>> = L.list.map { r ->
                 val on = (L.mode == "auto" && r.default) || L.mode == r.id.toString()
                 ((if (on) "✓  " else "") + r.name + (if (r.default) " · ${Str.layoutDefaultTag}" else "")) to {
                     dialog = null; toast = Str.loading
                     scope.launch { toast = if (L.choose(r)) Str.layoutApplied else Str.playError }
+                    Unit
                 }
             } + (if (L.mode == "custom") listOf(("✓  " + Str.layoutMine) to { dialog = null }) else emptyList())
             ChoiceDialog(Str.layout, opts.ifEmpty { listOf(Str.ok to { dialog = null }) }) { dialog = null }
         }
         "admin" -> ChoiceDialog(Str.adminTools, listOf(
-            Str.exportLists to { dialog = null; toast = Str.loading; scope.launch { toast = if (com.kanaani.ibo.data.Export.lists(ctx, x)) null else Str.playError } },
+            Str.exportLists to { dialog = null; toast = Str.loading; scope.launch { toast = if (com.kanaani.ibo.data.Export.lists(ctx, x)) null else Str.playError }; Unit },
             Str.uploadLayout to { dialog = "upload" },
         )) { dialog = null }
         "upload" -> UploadLayoutDialog(onDone = { msg -> dialog = null; toast = msg }) { dialog = null }
