@@ -30,7 +30,18 @@ object Panel {
         private set
     private var sp: SharedPreferences? = null
 
-    fun init(ctx: Context) { sp = ctx.getSharedPreferences("panel", Context.MODE_PRIVATE) }
+    private var tv = false
+
+    fun init(ctx: Context) {
+        sp = ctx.getSharedPreferences("panel", Context.MODE_PRIVATE)
+        tv = ctx.packageManager.hasSystemFeature("android.software.leanback")
+    }
+
+    /** Identifiant anonyme de l'appareil (compte des appareils actifs dans le panneau). */
+    private fun device(): String {
+        val p = sp ?: return ""
+        return p.getString("device", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("device", it).apply() }
+    }
 
     /** Hôtes : liste du panneau (gardée sur l'appareil) sinon ceux de l'application. */
     fun hosts(): List<String> {
@@ -43,7 +54,12 @@ object Panel {
         if (base.isBlank()) return
         val root = withContext(Dispatchers.IO) {
             runCatching {
-                Http.client.newCall(Request.Builder().url("$base/api/config/${BuildConfig.PANEL_APP}").build()).execute().use { r ->
+                // « Je suis actif » au plus toutes les 25 minutes (limite d'écritures du panneau).
+                val now = System.currentTimeMillis()
+                val ping = now - (sp?.getLong("ping", 0L) ?: 0L) > 25 * 60_000L
+                val q = if (ping) "?d=${device()}&v=${BuildConfig.VERSION_NAME}&k=${if (tv) "tv" else "phone"}" else ""
+                Http.client.newCall(Request.Builder().url("$base/api/config/${BuildConfig.PANEL_APP}$q").build()).execute().use { r ->
+                    if (ping && r.isSuccessful) sp?.edit()?.putLong("ping", now)?.apply()
                     if (!r.isSuccessful) null else Json.parseToJsonElement(r.body.string()) as? JsonObject
                 }
             }.getOrNull()
@@ -78,7 +94,7 @@ object Panel {
                 val o = e as? JsonObject ?: return@forEach
                 fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
                 Messages.fromPanel("p" + (s("id") ?: return@forEach), s("text").orEmpty(), s("sent")?.toLongOrNull() ?: 0L,
-                    s("until")?.toLongOrNull() ?: 0L, s("liveOnly") == "true")
+                    s("until")?.toLongOrNull() ?: 0L, s("liveOnly") == "true", s("style") ?: "ticker")
             }
         }
     }

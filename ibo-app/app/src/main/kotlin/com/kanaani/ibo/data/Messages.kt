@@ -18,7 +18,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
 /** Message affiché dans le bandeau défilant. [until] : fin d'affichage (ms) ; [liveOnly] : seulement au Direct. */
-data class Msg(val id: String, val text: String, val sent: Long, val until: Long, val liveOnly: Boolean)
+data class Msg(val id: String, val text: String, val sent: Long, val until: Long, val liveOnly: Boolean, val style: String = "ticker")
+
+/** Façons d'afficher un message (choisies dans le panneau). */
+val MSG_STYLES = setOf("ticker", "top", "popup", "full", "corner")
 
 /**
  * Messages instantanés via ntfy (https://ntfy.sh) : l'application reste abonnée à un sujet secret ; un message publié
@@ -70,10 +73,10 @@ object Messages {
     }
 
     /** Message reçu du panneau de contrôle (si ntfy ne l'a pas déjà livré). */
-    fun fromPanel(id: String, text: String, sent: Long, until: Long, liveOnly: Boolean) {
+    fun fromPanel(id: String, text: String, sent: Long, until: Long, liveOnly: Boolean, style: String = "ticker") {
         val t = text.trim()
         if (t.isEmpty() || until <= System.currentTimeMillis() || list.any { it.id == id || (it.text == t && kotlin.math.abs(it.sent - sent) < 120_000) }) return
-        list = (list + Msg(id, t, sent, until, liveOnly)).sortedBy { it.sent }.takeLast(20)
+        list = (list + Msg(id, t, sent, until, liveOnly, if (style in MSG_STYLES) style else "ticker")).sortedBy { it.sent }.takeLast(20)
     }
 
     private fun handle(id: String, raw: String, sentAt: Long) {
@@ -81,6 +84,7 @@ object Messages {
         var duration = 60 * 60_000L
         var liveOnly = false
         var clear = false
+        var style = "ticker"
         while (true) {
             val m = token.find(text) ?: break
             val t = m.groupValues[1].trim().lowercase()
@@ -89,6 +93,7 @@ object Messages {
                 d != null -> duration = d.groupValues[1].toLong() * when (d.groupValues[2]) { "s" -> 1_000L; "m" -> 60_000L; else -> 3_600_000L }
                 t == "live" -> liveOnly = true
                 t == "clear" -> clear = true
+                t in MSG_STYLES -> style = t
                 else -> break // crochets qui font partie du texte
             }
             text = text.substring(m.range.last + 1)
@@ -97,7 +102,7 @@ object Messages {
         if (clear) { list = list.filter { it.sent > sent }; return }
         text = text.trim()
         if (text.isEmpty() || list.any { it.id == id }) return
-        val msg = Msg(id, text, sent, sent + duration, liveOnly)
+        val msg = Msg(id, text, sent, sent + duration, liveOnly, style)
         if (msg.until <= System.currentTimeMillis()) return
         list = (list + msg).sortedBy { it.sent }.takeLast(20)
     }
