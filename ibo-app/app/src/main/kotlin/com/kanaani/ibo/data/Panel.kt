@@ -92,6 +92,8 @@ object Panel {
                 val until = (n["until"] as? JsonPrimitive)?.longOrNull ?: 0L
                 if (text.isEmpty() || (until > 0 && until < System.currentTimeMillis())) null else Notice(text, until)
             }
+            // Ordres prêts (catégories, chaînes) : celui que suit l'appareil est mis à jour s'il a changé.
+            (root["layouts"] as? JsonArray)?.let { Layouts.onConfig(Layouts.parseRefs(it)) }
             // Messages (en plus de ntfy, s'il n'a pas pu les livrer).
             (root["messages"] as? JsonArray).orEmpty().forEach { e ->
                 val o = e as? JsonObject ?: return@forEach

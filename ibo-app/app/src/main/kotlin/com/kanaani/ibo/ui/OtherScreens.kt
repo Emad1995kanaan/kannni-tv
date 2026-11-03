@@ -1,6 +1,10 @@
 package com.kanaani.ibo.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -166,6 +170,7 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         SettingItem(Str.language, Icons.Globe) { dialog = "lang" },
         SettingItem(Str.homeTheme, Icons.Grid) { dialog = "theme" },
         SettingItem(Str.account, Icons.Account) { nav.go(Screen.Account) },
+        SettingItem(Str.layout, Icons.Grid) { dialog = "layout" },
         SettingItem(Str.orderLive, Icons.Live) { nav.go(Screen.Reorder("live")) },
         SettingItem(Str.orderMovies, Icons.Movies) { nav.go(Screen.Reorder("movie")) },
         SettingItem(Str.orderSeries, Icons.Series) { nav.go(Screen.Reorder("series")) },
@@ -178,8 +183,7 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
             aboutLast = t
             if (aboutTaps >= 5) {
                 aboutTaps = 0
-                toast = Str.loading
-                scope.launch { toast = if (com.kanaani.ibo.data.Export.lists(ctx, x)) null else Str.playError }
+                dialog = "admin"
             } else toast = "${com.kanaani.ibo.Brand.name} · ${Str.version} ${BuildConfig.VERSION_NAME}"
         },
         SettingItem(Str.logout, Icons.Logout, C.danger) { dialog = "logout" },
@@ -217,6 +221,70 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
             Str.logout to { dialog = null; AccountCache.value = null; com.kanaani.ibo.player.Playback.stop(); Store.logout() },
             Str.cancel to { dialog = null },
         )) { dialog = null }
+        "layout" -> {
+            val L = com.kanaani.ibo.data.Layouts
+            val opts = L.list.map { r ->
+                val on = (L.mode == "auto" && r.default) || L.mode == r.id.toString()
+                ((if (on) "✓  " else "") + r.name + (if (r.default) " · ${Str.layoutDefaultTag}" else "")) to {
+                    dialog = null; toast = Str.loading
+                    scope.launch { toast = if (L.choose(r)) Str.layoutApplied else Str.playError }
+                }
+            } + (if (L.mode == "custom") listOf(("✓  " + Str.layoutMine) to { dialog = null }) else emptyList())
+            ChoiceDialog(Str.layout, opts.ifEmpty { listOf(Str.ok to { dialog = null }) }) { dialog = null }
+        }
+        "admin" -> ChoiceDialog(Str.adminTools, listOf(
+            Str.exportLists to { dialog = null; toast = Str.loading; scope.launch { toast = if (com.kanaani.ibo.data.Export.lists(ctx, x)) null else Str.playError } },
+            Str.uploadLayout to { dialog = "upload" },
+        )) { dialog = null }
+        "upload" -> UploadLayoutDialog(onDone = { msg -> dialog = null; toast = msg }) { dialog = null }
         "about" -> ChoiceDialog("${com.kanaani.ibo.Brand.name} · ${Str.version} ${BuildConfig.VERSION_NAME}", listOf(Str.ok to { dialog = null })) { dialog = null }
+    }
+}
+
+
+/** Outil caché : envoyer l'ordre de cet appareil au panneau (identifiants d'un administrateur du panneau). */
+@Composable
+private fun UploadLayoutDialog(onDone: (String) -> Unit, onDismiss: () -> Unit) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    var user by remember { mutableStateOf("") }
+    var pass by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val first = remember { FocusRequester() }
+    InitialFocus(first)
+    fun send(replace: Long?) {
+        if (busy || user.isBlank() || pass.isEmpty() || (replace == null && name.isBlank())) return
+        busy = true; err = null
+        scope.launch {
+            val e = com.kanaani.ibo.data.Layouts.upload(user.trim(), pass, name.trim(), replace)
+            busy = false
+            if (e == null) { com.kanaani.ibo.data.Panel.refresh(); onDone(Str.uploaded) } else err = e
+        }
+    }
+    Box(Modifier.fillMaxSize().background(Color(0xCC000000)).imePadding(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(480.dp).clip(RoundedCornerShape(20.dp)).background(C.panel).border(1.dp, C.line, RoundedCornerShape(20.dp))
+                .verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(Str.uploadLayout, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 19.sp)
+            Field(user, { user = it }, Str.panelUser, Modifier.fillMaxWidth(), focusRequester = first)
+            Field(pass, { pass = it }, Str.panelPass, Modifier.fillMaxWidth())
+            Field(name, { name = it }, Str.layoutName, Modifier.fillMaxWidth())
+            err?.let { Label(it, 13.sp, C.error, FontWeight.SemiBold, lines = 2) }
+            Tile({ send(null) }, Modifier.fillMaxWidth().height(46.dp), RoundedCornerShape(12.dp), colors = C.live, focusScale = 1.02f) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label(if (busy) Str.loading else Str.newLayout, 15.sp, weight = FontWeight.Bold) }
+            }
+            com.kanaani.ibo.data.Layouts.list.forEach { r ->
+                Tile({ send(r.id) }, Modifier.fillMaxWidth().height(42.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live, focusScale = 1.02f) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) { Label("${Str.replaceLayout}: ${r.name}", 14.sp, weight = FontWeight.SemiBold) }
+                }
+            }
+            Tile(onDismiss, Modifier.fillMaxWidth().height(42.dp), RoundedCornerShape(12.dp), colors = listOf(C.card), focusColors = C.live) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Label(Str.cancel, 14.sp, weight = FontWeight.SemiBold) }
+            }
+        }
     }
 }

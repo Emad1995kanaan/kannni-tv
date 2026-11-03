@@ -78,6 +78,7 @@ object Store {
     fun isHidden(kind: String, categoryId: String?) = categoryId != null && hiddenCategories[kind]?.contains(categoryId) == true
 
     fun setHidden(kind: String, ids: Set<String>, hide: Boolean) {
+        Layouts.markCustom()
         val cur = hiddenCategories[kind].orEmpty()
         val upd = if (hide) cur + ids else cur - ids
         hiddenCategories = hiddenCategories + (kind to upd)
@@ -109,6 +110,7 @@ object Store {
             sp.getString("hidden_$k", null)?.split('\n')?.filter { it.isNotEmpty() }?.toSet().orEmpty()
         }
         watching = decodeWatch(sp.getString("watching", null))
+        Layouts.init(ctx, categoryOrders.values.any { it.isNotEmpty() } || hiddenCategories.values.any { it.isNotEmpty() } || categoryNames.values.any { it.isNotEmpty() })
         aspect = sp.getInt("aspect", 0).mod(3)
         homeTheme = sp.getInt("home_theme", 0).let { if (it == 1) 1 else 0 }
     }
@@ -153,6 +155,7 @@ object Store {
 
     /** Renomme une catégorie ; nom vide = nom d'origine. */
     fun renameCategory(kind: String, id: String, name: String) {
+        Layouts.markCustom()
         val current = categoryNames[kind].orEmpty()
         val updated = if (name.isBlank()) current - id else current + (id to name.trim())
         categoryNames = categoryNames + (kind to updated)
@@ -173,9 +176,22 @@ object Store {
     }.getOrDefault(emptyMap())
 
     fun setCategoryOrder(kind: String, ids: List<String>) {
+        Layouts.markCustom()
         categoryOrders = categoryOrders + (kind to ids)
         if (ids.isEmpty()) sp.edit().remove("order_$kind").apply()
         else sp.edit().putString("order_$kind", ids.joinToString("\n")).apply()
+    }
+
+    /** Ordre prêt du panneau (Layouts) : remplace ordre, catégories masquées et noms, sans passer en « ordre perso ». */
+    fun applyLayout(kind: String, order: List<String>, hidden: Set<String>, names: Map<String, String>) {
+        categoryOrders = categoryOrders + (kind to order)
+        hiddenCategories = hiddenCategories + (kind to hidden)
+        categoryNames = categoryNames + (kind to names)
+        val e = sp.edit()
+        if (order.isEmpty()) e.remove("order_$kind") else e.putString("order_$kind", order.joinToString("\n"))
+        if (hidden.isEmpty()) e.remove("hidden_$kind") else e.putString("hidden_$kind", hidden.joinToString("\n"))
+        e.putString("names_$kind", JsonObject(names.mapValues { JsonPrimitive(it.value) }).toString())
+        e.apply()
     }
 
     /** Applique l'ordre choisi : catégories rangées d'abord, nouvelles catégories du serveur ensuite (ordre d'origine). */

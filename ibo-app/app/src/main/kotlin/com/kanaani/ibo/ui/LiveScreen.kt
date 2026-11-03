@@ -73,7 +73,13 @@ fun LiveScreen(nav: Navigator, x: Xtream, s: Screen.Live) {
                 // Catégorie israélienne : sport puis info, chaque chaîne de la qualité normale à la 4K.
                 // Nom d'origine du serveur (pas celui choisi par l'utilisateur) pour reconnaître la catégorie.
                 val name = serverCategories?.firstOrNull { it.id == c }?.name
-                if (com.kanaani.ibo.data.ChannelOrder.isIsraeli(name)) com.kanaani.ibo.data.ChannelOrder.sortIsraeli(list) else list
+                // Ordre des chaînes préparé dans le panneau, sinon tri automatique des chaînes israéliennes.
+                val mine = com.kanaani.ibo.data.Layouts.channelOrder(c)
+                when {
+                    mine != null -> { val rank = mine.withIndex().associate { (i, v) -> v to i }; list.withIndex().sortedBy { rank[it.value.id] ?: (mine.size + it.index) }.map { it.value } }
+                    com.kanaani.ibo.data.ChannelOrder.isIsraeli(name) -> com.kanaani.ibo.data.ChannelOrder.sortIsraeli(list)
+                    else -> list
+                }
             }
         }
     }
