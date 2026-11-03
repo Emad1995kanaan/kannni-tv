@@ -111,13 +111,13 @@ fun AdCarousel(slides: List<com.kanaani.ibo.data.Slide>, modifier: Modifier, cor
 }
 
 /** Publicités puis films : une publicité, 3 films, une publicité… (films seuls s'il n'y a pas de publicité). */
-fun billboardSlides(ads: List<String>, movies: List<com.kanaani.ibo.data.Slide>): List<com.kanaani.ibo.data.Slide> {
+fun billboardSlides(ads: List<String>, movies: List<com.kanaani.ibo.data.Slide>, every: Int = 3): List<com.kanaani.ibo.data.Slide> {
     val a = ads.map { com.kanaani.ibo.data.Slide(it) }
     if (a.isEmpty()) return movies
     if (movies.isEmpty()) return a
     val out = mutableListOf<com.kanaani.ibo.data.Slide>()
     var m = 0
-    for (ad in a) { out += ad; repeat(3) { if (m < movies.size) out += movies[m++] } }
+    for (ad in a) { out += ad; repeat(every) { if (m < movies.size) out += movies[m++] } }
     while (m < movies.size) out += movies[m++]
     return out
 }
@@ -163,7 +163,7 @@ private fun BottomTile(label: String, icon: String, modifier: Modifier, onClick:
 /** Thème « panneau publicitaire » : Direct / Films / Séries empilés à droite, publicité 16:9 à côté, raccourcis en bas. */
 @Composable
 fun BillboardHome(nav: Navigator, x: Xtream, now: Long) {
-    LaunchedEffect(x) { com.kanaani.ibo.data.Promo.refresh(x) }
+    LaunchedEffect(x, Ads.movieCount) { com.kanaani.ibo.data.Promo.refresh(x, Ads.movieCount) }
     val first = remember { FocusRequester() }
     InitialFocus(first)
     Backdrop {
@@ -176,7 +176,15 @@ fun BillboardHome(nav: Navigator, x: Xtream, now: Long) {
                     StackTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
                     StackTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
                 }
-                val slides = remember(Ads.billboard, com.kanaani.ibo.data.Promo.movies) { billboardSlides(Ads.billboard, com.kanaani.ibo.data.Promo.movies) }
+                val slides = remember(Ads.billboard, Ads.pinned, Ads.mode, Ads.every, com.kanaani.ibo.data.Promo.movies) {
+                    val movies = Ads.pinned + com.kanaani.ibo.data.Promo.movies
+                    when (Ads.mode) {
+                        "none" -> emptyList()
+                        "ads" -> billboardSlides(Ads.billboard, emptyList())
+                        "movies" -> movies
+                        else -> billboardSlides(Ads.billboard, movies, Ads.every)
+                    }
+                }
                 AdCarousel(slides, Modifier.weight(1f).fillMaxHeight())
             }
             Spacer(Modifier.height(12.dp))

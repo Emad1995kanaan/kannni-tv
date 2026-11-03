@@ -29,10 +29,14 @@ object Promo {
     private const val API = "https://api.themoviedb.org/3"
     private const val IMG = "https://image.tmdb.org/t/p/w1280"
 
-    suspend fun refresh(x: Xtream) {
+    private var loadedCount = -1
+
+    suspend fun refresh(x: Xtream, count: Int = 5) {
         val key = BuildConfig.TMDB_KEY
-        if (key.isBlank() || System.currentTimeMillis() - loadedAt < 30 * 60_000L) return
-        val latest = runCatching { x.latestMovies(5) }.getOrDefault(emptyList())
+        if (count <= 0) { movies = emptyList(); loadedCount = 0; return }
+        if (key.isBlank() || (count == loadedCount && System.currentTimeMillis() - loadedAt < 30 * 60_000L)) return
+        loadedCount = count
+        val latest = runCatching { x.latestMovies(count) }.getOrDefault(emptyList())
         if (latest.isEmpty()) return
         val slides = latest.mapNotNull { m ->
             runCatching {

@@ -51,8 +51,14 @@ object Panel {
         runCatching {
             // Publicités (remplacent ads.json de GitHub).
             (root["ads"] as? JsonObject)?.let { a ->
+                fun n(k: String) = (a[k] as? JsonPrimitive)?.contentOrNull
                 val list = (a["billboard"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-                Ads.fromPanel((a["interval"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: 10, list)
+                val pinned = (a["pinned"] as? JsonArray).orEmpty().mapNotNull { e ->
+                    val o = e as? JsonObject ?: return@mapNotNull null
+                    fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() && it != "null" }
+                    Slide(s("image") ?: return@mapNotNull null, s("title") ?: "", s("rating"))
+                }
+                Ads.fromPanel(n("interval")?.toIntOrNull() ?: 10, list, n("mode") ?: "mix", n("movies")?.toIntOrNull() ?: 5, n("every")?.toIntOrNull() ?: 3, pinned)
             }
             // Hôtes.
             val hosts = (root["hosts"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim()?.trimEnd('/') }
