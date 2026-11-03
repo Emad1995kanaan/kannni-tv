@@ -88,6 +88,7 @@ object Store {
         sp = ctx.getSharedPreferences("kanaani", Context.MODE_PRIVATE)
         Translations.init(ctx)
         Downloads.init(ctx)
+        ListCache.init(ctx)
         Panel.init(ctx)
         language = sp.getString("lang", "ar") ?: "ar"
         val u = sp.getString("user", null)

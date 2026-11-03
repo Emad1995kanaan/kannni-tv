@@ -1,6 +1,17 @@
 package com.kanaani.ibo.data
 
+import android.util.JsonReader
+import android.util.JsonToken
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -74,6 +85,53 @@ private fun JsonElement?.objects(): List<JsonObject> = when (this) {
 
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
+private val LIVE_FIELDS = setOf("stream_id", "name", "stream_icon", "num", "category_id")
+private val VOD_FIELDS = setOf("stream_id", "name", "stream_icon", "cover", "rating", "container_extension", "category_id", "added")
+private val SERIES_FIELDS = setOf("series_id", "name", "cover", "rating", "category_id", "last_modified")
+
+/** Champs utiles d'un élément, lus au fil de l'eau (le reste est sauté sans être construit). */
+private fun JsonReader.fields(keep: Set<String>): Map<String, String> {
+    val m = HashMap<String, String>(keep.size * 2)
+    beginObject()
+    while (hasNext()) {
+        val n = nextName()
+        if (n !in keep) { skipValue(); continue }
+        when (peek()) {
+            JsonToken.STRING, JsonToken.NUMBER -> nextString().trim().takeIf { it.isNotEmpty() && it != "null" }?.let { m[n] = it }
+            JsonToken.BOOLEAN -> m[n] = if (nextBoolean()) "1" else "0"
+            else -> skipValue()
+        }
+    }
+    endObject()
+    return m
+}
+
+/**
+ * Liste du serveur lue en flux (tableau, ou objet indexé chez certains serveurs). null = réponse de refus
+ * (« user_info » à la place de la liste) ou illisible.
+ */
+private fun <T> JsonReader.items(keep: Set<String>, map: (Map<String, String>) -> T?): List<T>? {
+    isLenient = true
+    val out = ArrayList<T>()
+    when (peek()) {
+        JsonToken.BEGIN_ARRAY -> {
+            beginArray()
+            while (hasNext()) if (peek() == JsonToken.BEGIN_OBJECT) map(fields(keep))?.let(out::add) else skipValue()
+            endArray()
+        }
+        JsonToken.BEGIN_OBJECT -> {
+            beginObject()
+            while (hasNext()) {
+                if (nextName() == "user_info") return null
+                if (peek() == JsonToken.BEGIN_OBJECT) map(fields(keep))?.let(out::add) else skipValue()
+            }
+            endObject()
+        }
+        else -> return null
+    }
+    return out
+}
+
 /** « AM | beIN Sports 1 | HD » → « beIN Sports 1 | HD » : préfixe du fournisseur retiré des noms de chaînes. */
 private val channelPrefix = Regex("""^\s*AM\s*\|\s*""")
 fun cleanChannel(name: String): String = name.replace(channelPrefix, "").ifBlank { name }
@@ -131,6 +189,26 @@ class Xtream(hosts: List<String>, val username: String, val password: String) {
         refused
     }
 
+    /**
+     * Comme [get] pour les grandes listes : la réponse est lue en flux, élément par élément, sans construire tout
+     * l'arbre JSON en mémoire (beaucoup plus rapide sur les boîtiers modestes). Même bascule de serveur.
+     */
+    private suspend fun <T> list(action: String, extra: String, keep: Set<String>, map: (Map<String, String>) -> T?): List<T>? =
+        withContext(Dispatchers.IO) {
+            val first = if (!primaryTried) hosts.first() else host
+            primaryTried = true
+            for (h in listOf(first) + hosts.filter { it != first }) {
+                val res = runCatching {
+                    Http.api.newCall(Request.Builder().url(url(h, action, extra)).build()).execute().use { r ->
+                        if (!r.isSuccessful) null else JsonReader(r.body.charStream().buffered(64 * 1024)).use { it.items(keep, map) }
+                    }
+                }.getOrNull() ?: continue
+                if (h != host) { host = h; Store.rememberHost(h) }
+                return@withContext res
+            }
+            null
+        }
+
     /** Réponse de refus : « auth » à 0, ou (infos du compte) statut autre qu'actif. */
     private fun refuses(res: JsonElement, account: Boolean): Boolean {
         val ui = (res as? JsonObject)?.get("user_info") as? JsonObject ?: return false
@@ -152,6 +230,50 @@ class Xtream(hosts: List<String>, val username: String, val password: String) {
     }
 
     fun clearCache() = cache.clear()
+
+    /** Augmente quand une liste « Tous » rafraîchie en arrière-plan arrive : l'écran ouvert se met à jour. */
+    var catalogVersion by mutableIntStateOf(0)
+        private set
+    private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val locks = ConcurrentHashMap<String, Mutex>()
+
+    /**
+     * Liste complète « Tous » : mémoire, sinon copie sur l'appareil (affichée tout de suite, puis rafraîchie en
+     * arrière-plan), sinon serveur. Un seul chargement à la fois par liste : le préchargement et l'écran se le partagent.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T : Any> full(
+        key: String, disk: () -> List<T>?, save: (List<T>) -> Unit, fetch: suspend () -> List<T>?,
+    ): List<T> {
+        (cache[key] as? List<T>)?.let { return it }
+        return locks.getOrPut(key) { Mutex() }.withLock {
+            (cache[key] as? List<T>)?.let { return@withLock it }
+            val saved = withContext(Dispatchers.IO) { runCatching { disk() }.getOrNull() }
+            if (saved != null) {
+                cache[key] = saved
+                bg.launch {
+                    val fresh = runCatching { fetch() }.getOrNull()?.takeIf { it.isNotEmpty() } ?: return@launch
+                    if (fresh != saved) { cache[key] = fresh; catalogVersion++ }
+                    runCatching { save(fresh) }
+                }
+                return@withLock saved
+            }
+            val fresh = try { fetch() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Throwable) { null }
+                ?: return@withLock emptyList()
+            cache[key] = fresh
+            if (fresh.isNotEmpty()) bg.launch { runCatching { save(fresh) } }
+            fresh
+        }
+    }
+
+    /** Préchargement à l'ouverture de l'accueil : « Tous » films et séries sont prêts avant qu'on les ouvre. */
+    fun prefetch() {
+        bg.launch {
+            delay(1500)
+            runCatching { loadMovies(null) }
+            runCatching { loadShows(null) }
+        }
+    }
 
     /** null = serveur injoignable ou réponse illisible ; status null = identifiants refusés. */
     suspend fun account(): Account? {
@@ -190,9 +312,9 @@ class Xtream(hosts: List<String>, val username: String, val password: String) {
 
     private suspend fun loadChannels(categoryId: String?): List<Channel> = cached("live:${categoryId ?: "*"}") {
         val extra = categoryId?.let { "&category_id=${enc(it)}" } ?: ""
-        get("get_live_streams", extra)?.objects()?.mapNotNull { o ->
-            val id = o.str("stream_id") ?: return@mapNotNull null
-            Channel(id, cleanChannel(o.str("name") ?: id), o.str("stream_icon"), o.int("num") ?: 0, o.str("category_id"))
+        list("get_live_streams", extra, LIVE_FIELDS) { o ->
+            val id = o["stream_id"] ?: return@list null
+            Channel(id, cleanChannel(o["name"] ?: id), o["stream_icon"], o["num"]?.toDoubleOrNull()?.toInt() ?: 0, o["category_id"])
         }?.distinctBy { it.id }
     } ?: emptyList()
 
@@ -200,25 +322,30 @@ class Xtream(hosts: List<String>, val username: String, val password: String) {
     suspend fun movies(categoryId: String?): List<Movie> =
         loadMovies(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("movie", it.categoryId) } else l }
 
-    private suspend fun loadMovies(categoryId: String?): List<Movie> = cached("vod:${categoryId ?: "*"}") {
-        get("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: "")?.objects()?.mapNotNull { o ->
-            val id = o.str("stream_id") ?: return@mapNotNull null
-            Movie(id, o.str("name") ?: id, o.str("stream_icon") ?: o.str("cover"), o.str("rating"), o.str("container_extension") ?: "mp4", o.str("category_id"),
-                added = o.str("added")?.toLongOrNull() ?: 0)
+    private suspend fun fetchMovies(categoryId: String?): List<Movie>? =
+        list("get_vod_streams", categoryId?.let { "&category_id=${enc(it)}" } ?: "", VOD_FIELDS) { o ->
+            val id = o["stream_id"] ?: return@list null
+            Movie(id, o["name"] ?: id, o["stream_icon"] ?: o["cover"], o["rating"], o["container_extension"] ?: "mp4", o["category_id"],
+                added = o["added"]?.toLongOrNull() ?: 0)
         }?.distinctBy { it.id }
-    } ?: emptyList()
+
+    private suspend fun loadMovies(categoryId: String?): List<Movie> =
+        if (categoryId == null) full("vod:*", { ListCache.loadMovies(username, password) }, { ListCache.saveMovies(username, password, it) }) { fetchMovies(null) }
+        else cached("vod:$categoryId") { fetchMovies(categoryId) } ?: emptyList()
 
     /** categoryId null = toutes les séries. */
     suspend fun shows(categoryId: String?): List<Show> =
         loadShows(categoryId).let { l -> if (categoryId == null) l.filterNot { Store.isHidden("series", it.categoryId) } else l }
 
-    private suspend fun loadShows(categoryId: String?): List<Show> = cached("series:${categoryId ?: "*"}") {
-        get("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: "")?.objects()?.mapNotNull { o ->
-            val id = o.str("series_id") ?: return@mapNotNull null
-            Show(id, o.str("name") ?: id, o.str("cover"), o.str("rating"), o.str("category_id"),
-                updated = o.str("last_modified")?.toLongOrNull() ?: 0)
+    private suspend fun fetchShows(categoryId: String?): List<Show>? =
+        list("get_series", categoryId?.let { "&category_id=${enc(it)}" } ?: "", SERIES_FIELDS) { o ->
+            val id = o["series_id"] ?: return@list null
+            Show(id, o["name"] ?: id, o["cover"], o["rating"], o["category_id"], updated = o["last_modified"]?.toLongOrNull() ?: 0)
         }?.distinctBy { it.id }
-    } ?: emptyList()
+
+    private suspend fun loadShows(categoryId: String?): List<Show> =
+        if (categoryId == null) full("series:*", { ListCache.loadShows(username, password) }, { ListCache.saveShows(username, password, it) }) { fetchShows(null) }
+        else cached("series:$categoryId") { fetchShows(categoryId) } ?: emptyList()
 
     /** Films les plus récemment ajoutés au serveur (toutes catégories). */
     suspend fun latestMovies(limit: Int = 30): List<Movie> = movies(null).filter { it.added > 0 }.sortedByDescending { it.added }.take(limit)

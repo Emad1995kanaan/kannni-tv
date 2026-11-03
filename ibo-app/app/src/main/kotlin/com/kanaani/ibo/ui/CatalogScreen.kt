@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -81,8 +82,11 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
         serverCategories?.let { com.kanaani.ibo.data.Store.arrange(if (s.series) "series" else "movie", it) }
     }
     var reload by remember { mutableIntStateOf(0) }
-    val items by produceState<List<Poster>?>(null, s.category, reload) {
-        value = null
+    // catalogVersion : liste « Tous » rafraîchie en arrière-plan → mise à jour sans repasser par le chargement.
+    var shown by remember { mutableStateOf<Pair<String?, Int>?>(null) }
+    val items by produceState<List<Poster>?>(null, s.category, reload, x.catalogVersion) {
+        if (shown != (s.category to reload)) value = null
+        shown = s.category to reload
         val c = s.category ?: run { value = emptyList(); return@produceState }
         val cat = if (c == Screen.ALL) null else c
         value = when {

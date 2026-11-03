@@ -52,6 +52,8 @@ fun expiryLine(a: Account?): String {
 @Composable
 fun HomeScreen(nav: Navigator, x: Xtream) {
     LaunchedEffect(x) { AccountCache.load(x) }
+    // « Tous » films et séries préparés en arrière-plan pendant qu'on est sur l'accueil.
+    LaunchedEffect(x) { x.prefetch() }
     LaunchedEffect(Unit) { com.kanaani.ibo.data.Rates.refresh() }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(60_000L - now % 60_000L) } }
