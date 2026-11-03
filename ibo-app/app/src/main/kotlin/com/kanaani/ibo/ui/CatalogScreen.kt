@@ -83,10 +83,10 @@ fun CatalogScreen(nav: Navigator, x: Xtream, s: Screen.Catalog) {
     }
     var reload by remember { mutableIntStateOf(0) }
     // catalogVersion : liste « Tous » rafraîchie en arrière-plan → mise à jour sans repasser par le chargement.
-    var shown by remember { mutableStateOf<Pair<String?, Int>?>(null) }
+    var loadedFor by remember { mutableStateOf<Pair<String?, Int>?>(null) }
     val items by produceState<List<Poster>?>(null, s.category, reload, x.catalogVersion) {
-        if (shown != (s.category to reload)) value = null
-        shown = s.category to reload
+        if (loadedFor != (s.category to reload)) value = null
+        loadedFor = s.category to reload
         val c = s.category ?: run { value = emptyList(); return@produceState }
         val cat = if (c == Screen.ALL) null else c
         value = when {
