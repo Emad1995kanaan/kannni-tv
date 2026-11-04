@@ -98,7 +98,11 @@ object Panel {
             (root["layouts"] as? JsonArray)?.let { arr ->
                 val a = root["assigned"] as? JsonObject
                 val assigned = a?.let { o -> (o["id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.let { id -> id to ((o["sent"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: 0L) } }
-                Layouts.onConfig(Layouts.parseRefs(arr), assigned)
+                val pk = (root["package"] as? JsonObject)?.let { o ->
+                    fun v(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
+                    v("id")?.toLongOrNull()?.let { LayoutRef(it, v("name").orEmpty(), false, v("v")?.toLongOrNull() ?: 0L) }
+                }
+                Layouts.onConfig(Layouts.parseRefs(arr), assigned, pk)
             }
             // Messages (en plus de ntfy, s'il n'a pas pu les livrer).
             (root["messages"] as? JsonArray).orEmpty().forEach { e ->

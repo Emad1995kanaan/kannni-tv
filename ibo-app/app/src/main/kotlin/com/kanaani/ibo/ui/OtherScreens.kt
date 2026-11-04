@@ -170,10 +170,13 @@ fun SettingsScreen(nav: Navigator, x: Xtream) {
         SettingItem(Str.language, Icons.Globe) { dialog = "lang" },
         SettingItem(Str.homeTheme, Icons.Grid) { dialog = "theme" },
         SettingItem(Str.account, Icons.Account) { nav.go(Screen.Account) },
+    ) + (if (Store.packageOn) emptyList() else listOf(
+        // Paquet du panneau : contenu verrouillé, pas de rangement ni de choix d'ordre.
         SettingItem(Str.layout, Icons.Grid) { dialog = "layout" },
         SettingItem(Str.orderLive, Icons.Live) { nav.go(Screen.Reorder("live")) },
         SettingItem(Str.orderMovies, Icons.Movies) { nav.go(Screen.Reorder("movie")) },
         SettingItem(Str.orderSeries, Icons.Series) { nav.go(Screen.Reorder("series")) },
+    )) + listOf(
         SettingItem(Str.refresh, Icons.Refresh) { x.clearCache(); AccountCache.value = null; toast = Str.refreshed },
         SettingItem(Str.checkUpdates, Icons.Refresh) { scope.launch { com.kanaani.ibo.data.Updater.check(manual = true) } },
         SettingItem(Str.about, Icons.Info) {

@@ -75,7 +75,24 @@ object Store {
     var hiddenCategories by mutableStateOf<Map<String, Set<String>>>(emptyMap())
         private set
 
-    fun isHidden(kind: String, categoryId: String?) = categoryId != null && hiddenCategories[kind]?.contains(categoryId) == true
+    /** Paquet du panneau (contenu verrouillé) : catégories permises par type ; absent = tout. */
+    var allowed by mutableStateOf<Map<String, Set<String>>>(emptyMap())
+        private set
+    private var pkgOrders: Map<String, List<String>> = emptyMap()
+    private var pkgNames: Map<String, Map<String, String>> = emptyMap()
+    val packageOn get() = allowed.isNotEmpty()
+    /** Ce type de contenu existe-t-il pour ce client (paquet sans films → pas de tuile Films) ? */
+    fun kindOn(kind: String) = allowed[kind]?.isNotEmpty() ?: true
+
+    fun setPackage(allow: Map<String, Set<String>>, orders: Map<String, List<String>>, names: Map<String, Map<String, String>>) {
+        pkgOrders = orders; pkgNames = names; allowed = allow
+    }
+    fun clearPackage() { pkgOrders = emptyMap(); pkgNames = emptyMap(); allowed = emptyMap() }
+
+    fun isHidden(kind: String, categoryId: String?): Boolean {
+        allowed[kind]?.let { return categoryId == null || categoryId !in it }
+        return categoryId != null && hiddenCategories[kind]?.contains(categoryId) == true
+    }
 
     fun setHidden(kind: String, ids: Set<String>, hide: Boolean) {
         Layouts.markCustom()
@@ -167,6 +184,10 @@ object Store {
         val names = categoryNames[kind].orEmpty()
         val hidden = hiddenCategories[kind].orEmpty()
         // Nom choisi par l'utilisateur, sinon traduction (hébreu), sinon nom du serveur.
+        if (packageOn) {
+            val pn = pkgNames[kind].orEmpty()
+            return orderedBy(pkgOrders[kind].orEmpty(), list.filterNot { isHidden(kind, it.id) }) { it.id }.map { c -> c.copy(name = pn[c.id] ?: Translations.category(c.name)) }
+        }
         return ordered(kind, list.filterNot { it.id in hidden }) { it.id }.map { c -> c.copy(name = names[c.id] ?: Translations.category(c.name)) }
     }
 
@@ -195,8 +216,10 @@ object Store {
     }
 
     /** Applique l'ordre choisi : catégories rangées d'abord, nouvelles catégories du serveur ensuite (ordre d'origine). */
-    fun <T> ordered(kind: String, list: List<T>, id: (T) -> String): List<T> {
-        val order = categoryOrders[kind].orEmpty()
+    fun <T> ordered(kind: String, list: List<T>, id: (T) -> String): List<T> =
+        orderedBy(if (packageOn) pkgOrders[kind].orEmpty() else categoryOrders[kind].orEmpty(), list, id)
+
+    private fun <T> orderedBy(order: List<String>, list: List<T>, id: (T) -> String): List<T> {
         if (order.isEmpty()) return list
         val rank = order.withIndex().associate { (i, v) -> v to i }
         return list.withIndex().sortedBy { rank[id(it.value)] ?: (order.size + it.index) }.map { it.value }

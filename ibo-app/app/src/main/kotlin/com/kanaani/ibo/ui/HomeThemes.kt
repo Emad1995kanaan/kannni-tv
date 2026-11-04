@@ -173,8 +173,8 @@ fun BillboardHome(nav: Navigator, x: Xtream, now: Long) {
             Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.width(250.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     StackTile(Str.live, Icons.Live, C.live, Modifier.weight(1f).focusRequester(first)) { nav.go(Screen.Live()) }
-                    StackTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
-                    StackTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
+                    if (com.kanaani.ibo.data.Store.kindOn("movie")) StackTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
+                    if (com.kanaani.ibo.data.Store.kindOn("series")) StackTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
                 }
                 val slides = remember(Ads.billboard, Ads.pinned, Ads.mode, Ads.every, com.kanaani.ibo.data.Promo.movies) {
                     val movies = Ads.pinned + com.kanaani.ibo.data.Promo.movies

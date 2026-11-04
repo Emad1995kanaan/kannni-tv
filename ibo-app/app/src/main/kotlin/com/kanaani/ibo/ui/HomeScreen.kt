@@ -83,8 +83,8 @@ fun HomeScreen(nav: Navigator, x: Xtream) {
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth().height(200.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 BigTile(Str.live, Icons.Live, C.live, Modifier.weight(1.3f).focusRequester(first)) { nav.go(Screen.Live()) }
-                BigTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
-                BigTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
+                if (Store.kindOn("movie")) BigTile(Str.movies, Icons.Movies, C.movies, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = false)) }
+                if (Store.kindOn("series")) BigTile(Str.series, Icons.Series, C.series, Modifier.weight(1f)) { nav.go(Screen.Catalog(series = true)) }
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth().height(72.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {

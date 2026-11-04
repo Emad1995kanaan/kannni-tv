@@ -43,10 +43,48 @@ object Layouts {
         // Première fois avec cette version : celui qui a déjà rangé lui-même garde son ordre.
         mode = p.getString("mode", null) ?: (if (userCustomized) "custom" else "auto").also { p.edit().putString("mode", it).apply() }
         channels = decodeChannels(p.getString("channels", null))
+        p.getString("pkg", null)?.let { raw -> runCatching { applyPackage(Json.parseToJsonElement(raw) as JsonObject) } }
+    }
+
+    /** Paquet (contenu verrouillé) : seulement les catégories choisies, dans l'ordre du panneau. */
+    private fun applyPackage(data: JsonObject) {
+        val allow = mutableMapOf<String, Set<String>>(); val orders = mutableMapOf<String, List<String>>(); val names = mutableMapOf<String, Map<String, String>>()
+        for (kind in listOf("live", "movie", "series")) {
+            val k = data[kind] as? JsonObject
+            (k?.get("allow") as? JsonArray)?.let { allow[kind] = ids(it).toSet() }
+            orders[kind] = ids(k?.get("order")); names[kind] = names(k?.get("names"))
+        }
+        pkgChannels = ((data["live"] as? JsonObject)?.get("channels") as? JsonObject)?.mapValues { ids(it.value) }.orEmpty()
+        if (allow.isEmpty()) Store.clearPackage() else Store.setPackage(allow, orders, names)
+    }
+
+    private suspend fun syncPackage(pkg: LayoutRef?) {
+        val p = sp ?: return
+        if (pkg == null) {
+            if (p.contains("pkg")) { p.edit().remove("pkg").remove("pkg_v").remove("pkg_id").apply(); pkgChannels = emptyMap(); Store.clearPackage() }
+            return
+        }
+        if (p.getLong("pkg_v", -1L) == pkg.v && p.getLong("pkg_id", -1L) == pkg.id) return
+        val data = fetch(pkg.id) ?: return
+        applyPackage(data)
+        p.edit().putString("pkg", data.toString()).putLong("pkg_v", pkg.v).putLong("pkg_id", pkg.id).apply()
+    }
+
+    private suspend fun fetch(id: Long): JsonObject? {
+        val base = BuildConfig.PANEL_URL.trimEnd('/')
+        if (base.isBlank()) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                Http.client.newCall(Request.Builder().url("$base/api/layout/${BuildConfig.PANEL_APP}/$id").build()).execute().use { r ->
+                    if (r.isSuccessful) (Json.parseToJsonElement(r.body.string()) as? JsonObject)?.get("data") as? JsonObject else null
+                }
+            }.getOrNull()
+        }
     }
 
     /** Ordre des chaînes d'une catégorie, si l'ordre suivi en a un. */
-    fun channelOrder(categoryId: String): List<String>? = if (mode == "custom") null else channels[categoryId]
+    fun channelOrder(categoryId: String): List<String>? = if (Store.packageOn) pkgChannels[categoryId] else if (mode == "custom") null else channels[categoryId]
+    private var pkgChannels: Map<String, List<String>> = emptyMap()
 
     /** L'utilisateur a rangé / masqué / renommé lui-même. */
     fun markCustom() {
@@ -56,8 +94,9 @@ object Layouts {
     }
 
     /** Liste reçue avec la configuration du panneau : applique l'ordre suivi s'il a changé. */
-    suspend fun onConfig(refs: List<LayoutRef>, assigned: Pair<Long, Long>? = null) {
+    suspend fun onConfig(refs: List<LayoutRef>, assigned: Pair<Long, Long>? = null, pkg: LayoutRef? = null) {
         list = refs
+        syncPackage(pkg)
         // Ordre envoyé à ce client en particulier : appliqué même s'il avait rangé lui-même.
         if (assigned != null && assigned.second > (sp?.getLong("assigned_sent", 0L) ?: 0L)) {
             sp?.edit()?.putLong("assigned_sent", assigned.second)?.apply()
