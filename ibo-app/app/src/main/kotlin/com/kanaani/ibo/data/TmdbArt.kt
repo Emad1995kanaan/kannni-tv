@@ -87,11 +87,16 @@ object TmdbArt {
  */
 @Composable
 fun PosterImage(url: String?, kind: String, name: String, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
-    var src by remember(url, name) { mutableStateOf(url?.takeIf { it.isNotBlank() }) }
-    var looked by remember(url, name) { mutableStateOf(false) }
-    LaunchedEffect(src, looked) {
-        if (src == null && !looked) { looked = true; src = TmdbArt.find(kind, name)?.poster }
+    val own = url?.takeIf { it.isNotBlank() }
+    var src by remember(url, name) { mutableStateOf(own) }
+    // L'image du serveur n'a pas pu s'ouvrir.
+    var failed by remember(url, name) { mutableStateOf(false) }
+    // Clés stables (pas d'état modifié dedans qui relancerait l'effet en annulant la recherche en cours).
+    LaunchedEffect(url, name, failed) {
+        if (own != null && !failed) return@LaunchedEffect
+        val p = TmdbArt.find(kind, name)?.poster
+        src = p ?: if (failed) null else src
     }
     val s = src ?: return
-    coil3.compose.AsyncImage(s, name, modifier, contentScale = contentScale, onError = { if (!looked) src = null })
+    coil3.compose.AsyncImage(s, name, modifier, contentScale = contentScale, onError = { if (s == own) failed = true })
 }
