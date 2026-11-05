@@ -83,18 +83,20 @@ fun MovieDetailScreen(nav: Navigator, x: Xtream, s: Screen.MovieDetail) {
     val download = rememberDownloader()
     val m = s.movie
     val info by produceState<MovieInfo?>(null, m.id) { value = x.movieInfo(m.id) }
+    // Fond / résumé manquants : TMDB.
+    val art by produceState<com.kanaani.ibo.data.TmdbArt.Art?>(null, info) { if (info != null && (info?.backdrop == null || info?.plot.isNullOrBlank())) value = com.kanaani.ibo.data.TmdbArt.find("movie", m.name) }
     val playFocus = remember { FocusRequester() }
     InitialFocus(playFocus)
     val fav = Store.isFavorite("movie", m.id)
-    DetailBackdrop(info?.backdrop ?: m.poster) {
+    DetailBackdrop(info?.backdrop ?: art?.backdrop ?: m.poster) {
         Row(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 28.dp), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
             Box(Modifier.width(220.dp).height(330.dp).clip(RoundedCornerShape(14.dp)).background(C.card)) {
-                AsyncImage(m.poster, m.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                com.kanaani.ibo.data.PosterImage(m.poster, "movie", m.name, Modifier.fillMaxSize())
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(m.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 30.sp, maxLines = 2)
                 Meta(listOf(info?.year, info?.duration, info?.genre, (info?.rating ?: m.rating)?.let { "★ $it" }))
-                info?.plot?.let { Label(it, 14.sp, C.text, FontWeight.Normal, lines = 6) }
+                (info?.plot?.takeIf { it.isNotBlank() } ?: art?.overview)?.let { Label(it, 14.sp, C.text, FontWeight.Normal, lines = 6) }
                 info?.director?.let { Label("${Str.director}: $it", 12.sp, C.text2) }
                 info?.cast?.let { Label("${Str.cast}: $it", 12.sp, C.text2, lines = 2) }
                 Spacer(Modifier.height(6.dp))
@@ -135,6 +137,7 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
     val download = rememberDownloader()
     val show = s.show
     val info by produceState<ShowInfo?>(null, show.id) { value = x.showInfo(show.id) }
+    val art by produceState<com.kanaani.ibo.data.TmdbArt.Art?>(null, info) { if (info != null && (info?.backdrop == null || info?.plot.isNullOrBlank())) value = com.kanaani.ibo.data.TmdbArt.find("tv", show.name) }
     val seasons = info?.seasons.orEmpty()
     LaunchedEffect(seasons) { val cur = s.season; if (cur == null || !seasons.containsKey(cur)) s.season = seasons.keys.firstOrNull() }
     val episodes = s.season?.let { seasons[it] }.orEmpty()
@@ -144,15 +147,15 @@ fun ShowDetailScreen(nav: Navigator, x: Xtream, s: Screen.ShowDetail) {
     val saved = Store.watchOf("series", show.id)
     val scope = rememberCoroutineScope()
 
-    DetailBackdrop(info?.backdrop ?: show.poster) {
+    DetailBackdrop(info?.backdrop ?: art?.backdrop ?: show.poster) {
         Row(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Column(Modifier.width(300.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.width(150.dp).height(225.dp).clip(RoundedCornerShape(12.dp)).background(C.card)) {
-                    AsyncImage(show.poster, show.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    com.kanaani.ibo.data.PosterImage(show.poster, "tv", show.name, Modifier.fillMaxSize())
                 }
                 Text(show.name, color = C.text, fontFamily = Sora, fontWeight = FontWeight.Bold, fontSize = 22.sp, maxLines = 2)
                 Meta(listOf(info?.year, info?.genre, (info?.rating ?: show.rating)?.let { "★ $it" }))
-                info?.plot?.let { Label(it, 12.sp, C.text2, FontWeight.Normal, lines = 5) }
+                (info?.plot?.takeIf { it.isNotBlank() } ?: art?.overview)?.let { Label(it, 12.sp, C.text2, FontWeight.Normal, lines = 5) }
                 if (saved != null && saved.episodeId.isNotEmpty()) {
                     ActionButton("${Str.resume}  S${saved.season} E${saved.episode}", Icons.Play, true) {
                         resumeWatch(nav, x, scope, saved)

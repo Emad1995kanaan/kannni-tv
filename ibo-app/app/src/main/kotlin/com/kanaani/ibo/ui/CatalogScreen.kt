@@ -194,7 +194,8 @@ fun PosterCard(p: Poster, modifier: Modifier, onClick: () -> Unit) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Label(p.name, 12.sp, C.text3, lines = 3, modifier = Modifier.padding(8.dp))
             }
-            AsyncImage(p.image, p.name, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            // Pas d'affiche (ou image cassée) : affiche TMDB.
+            com.kanaani.ibo.data.PosterImage(p.image, if (p.show != null || p.watch?.kind == "series") "tv" else "movie", p.watch?.name ?: p.name, Modifier.fillMaxSize())
             val r = p.rating?.toDoubleOrNull()?.takeIf { it > 0 }
             if (r != null) Box(Modifier.align(Alignment.TopStart).padding(6.dp).clip(RoundedCornerShape(6.dp))
                 .background(Brush.linearGradient(C.live)).padding(horizontal = 6.dp, vertical = 2.dp)) {

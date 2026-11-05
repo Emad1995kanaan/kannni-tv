@@ -24,6 +24,7 @@ class IboApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        com.kanaani.ibo.data.TmdbArt.init(this)
     }
 }
 
