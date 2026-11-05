@@ -242,10 +242,23 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play, hosted: Boolean = fa
                 Label("⛶  $f", 22.sp, weight = FontWeight.Bold)
             }
         }
-        // Bouton format (tactile) : visible avec les contrôles (VOD) ou le bandeau (direct).
+        // Films / séries : titre en haut à droite, avec les contrôles, et tout le temps de la pause.
+        if (!s.live) {
+            var paused by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { while (true) { paused = Playback.player(ctx).let { !it.playWhenReady }; kotlinx.coroutines.delay(400) } }
+            if (controlsVisible || paused) Box(
+                Modifier.align(androidx.compose.ui.AbsoluteAlignment.TopRight).padding(top = 18.dp, end = 22.dp).fillMaxWidth(0.55f),
+                contentAlignment = androidx.compose.ui.AbsoluteAlignment.TopRight,
+            ) {
+                Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0xAA000000)).padding(horizontal = 16.dp, vertical = 9.dp)) {
+                    Label(title, 20.sp, weight = FontWeight.Bold, lines = 2)
+                }
+            }
+        }
+        // Bouton format (tactile) : visible avec les contrôles (VOD) ou le bandeau (direct). En haut à gauche (le titre est à droite).
         if ((!s.live && controlsVisible) || (s.live && showInfo)) {
             Box(
-                Modifier.align(Alignment.TopEnd).padding(18.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x99000000))
+                Modifier.align(androidx.compose.ui.AbsoluteAlignment.TopLeft).padding(18.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x99000000))
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { cycleAspect(); if (s.live) infoTick++ }
                     .padding(horizontal = 16.dp, vertical = 9.dp),
             ) { Label("⛶  " + Str.aspectName(Store.aspect), 14.sp, weight = FontWeight.Bold) }
