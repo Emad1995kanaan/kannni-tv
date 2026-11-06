@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -157,19 +156,6 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play, hosted: Boolean = fa
     val focus = remember { FocusRequester() }
     if (s.live) InitialFocus(focus)
 
-    // Direct : OK ouvre la liste des chaînes par-dessus la vidéo (la vidéo continue derrière).
-    // OK sur une chaîne = la lancer et fermer ; Retour = fermer seulement ; sans touche pendant 8 s = fermée.
-    var listOpen by remember { mutableStateOf(false) }
-    var listTick by remember { mutableIntStateOf(0) }
-    val listFocus = remember { FocusRequester() }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    androidx.activity.compose.BackHandler(enabled = listOpen) { listOpen = false }
-    LaunchedEffect(listOpen, listTick) {
-        if (!listOpen) { runCatching { focus.requestFocus() }; return@LaunchedEffect }
-        if (listTick == 0) { runCatching { listState.scrollToItem((index - 3).coerceAtLeast(0)) }; delay(60); runCatching { listFocus.requestFocus() } }
-        delay(8_000); listOpen = false
-    }
-
     Box(
         Modifier
             .fillMaxSize()
@@ -193,12 +179,15 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play, hosted: Boolean = fa
                 if (s.live) Modifier
                     .focusRequester(focus)
                     .onPreviewKeyEvent { e ->
-                        if (listOpen) { if (e.type == KeyEventType.KeyDown) listTick++; return@onPreviewKeyEvent false }
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (e.nativeKeyEvent.keyCode) {
                             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { zap(+1); true }
                             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(-1); true }
-                            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { if (s.channels.size > 1) { listTick = 0; listOpen = true } else infoTick++; true }
+                            // OK : retour à la page Direct complète (catégories, chaînes, aperçu) ; la chaîne continue.
+                            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                                if (nav.stack.getOrNull(nav.stack.lastIndex - 1) is Screen.Live) nav.back() else infoTick++
+                                true
+                            }
                             KeyEvent.KEYCODE_INFO -> { infoTick++; true }
                             // ◀ ▶ (inutilisés en direct), touche jaune ou Menu : format de l'image.
                             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, in ASPECT_KEYS -> { cycleAspect(); infoTick++; true }
@@ -319,27 +308,6 @@ fun PlayerScreen(nav: Navigator, x: Xtream, s: Screen.Play, hosted: Boolean = fa
                     ZapButton("▲") { zap(+1) }
                     Spacer(Modifier.width(10.dp))
                     ZapButton("▼") { zap(-1) }
-                }
-            }
-        }
-
-        if (s.live && listOpen) {
-            Column(Modifier.align(Alignment.CenterStart).width(420.dp).fillMaxHeight().background(Color(0xE6000000)).padding(vertical = 10.dp)) {
-                Label("${s.channels.size} ${Str.channels}", 15.sp, C.text2, FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
-                androidx.compose.foundation.lazy.LazyColumn(state = listState) {
-                    items(s.channels.size) { i ->
-                        val c = s.channels[i]
-                        val on = i == index
-                        Tile({ listOpen = false; if (i != index) zap(i - index) }, (if (on) Modifier.focusRequester(listFocus) else Modifier).fillMaxWidth().height(54.dp),
-                            RoundedCornerShape(0.dp), colors = listOf(if (on) Color(0x33FFFFFF) else Color.Transparent), focusColors = C.live, focusScale = 1f) {
-                            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Label("${c.number.takeIf { it > 0 } ?: (i + 1)}", 16.sp, C.text2, modifier = Modifier.width(48.dp))
-                                AsyncImage(c.logo, null, Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x22FFFFFF)), contentScale = ContentScale.Fit)
-                                Spacer(Modifier.width(12.dp))
-                                Label(c.name, 16.sp, weight = if (on) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
                 }
             }
         }
